@@ -224,10 +224,7 @@ const Navbar = () => {
             ) : (
               <div className="flex items-center space-x-4">
                 <Link to="/auth">
-                  <Button variant="ghost">Login</Button>
-                </Link>
-                <Link to="/auth?mode=signup">
-                  <Button>Sign up</Button>
+                  <Button>Login</Button>
                 </Link>
               </div>
             )}
@@ -351,9 +348,7 @@ const Navbar = () => {
                   <Link to="/auth">
                     <Button className="w-full">Login</Button>
                   </Link>
-                  <Link to="/auth?mode=signup">
-                    <Button className="w-full">Sign up</Button>
-                  </Link>
+                  
                 </div>
               )}
             </div>
