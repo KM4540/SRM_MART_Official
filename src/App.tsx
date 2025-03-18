@@ -17,7 +17,7 @@ import Sell from "./pages/Sell";
 import CategoryPage from "./pages/CategoryPage";
 import MyListings from "./pages/MyListings";
 import PrivateRoute from "./components/auth/PrivateRoute";
-
+import UserProfile from "./pages/UserProfile";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -39,6 +39,7 @@ const App = () => (
             <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
             <Route path="/sell" element={<Sell />} />
             <Route path="/category/:categoryId" element={<CategoryPage />} />
+            <Route path="/user-profile/:userId" element={<UserProfile />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
