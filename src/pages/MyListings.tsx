@@ -97,6 +97,8 @@ const MyListings = () => {
                   image={product.image}
                   category={product.category}
                   date={new Date(product.created_at).toLocaleDateString()}
+                  sellerName={product.seller_contacts?.[0]?.name || ''}
+                  sellerPhone={product.seller_contacts?.[0]?.phone || ''}
                 />
                 
                 <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
