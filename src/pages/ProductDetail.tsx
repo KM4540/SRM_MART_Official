@@ -287,11 +287,12 @@ const ProductDetail = () => {
             </div>
             
             <div className="space-y-2">
-              <h3 className="font-medium">Seller Information</h3>
-              <div className="text-muted-foreground">
-                <p>Name: {product.seller_contacts?.name}</p>
-                <p>Phone: {product.seller_contacts?.phone}</p>
-              </div>
+              <Button 
+                className="w-full"
+                onClick={() => navigate(`/user-profile/${product.seller_id}`)}
+              >
+                Contact Seller
+              </Button>
             </div>
             
             <Separator />
