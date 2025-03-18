@@ -48,22 +48,22 @@ export const useProducts = () => {
 
   // Fetch a single product by ID
   const fetchProductById = async (id: string) => {
-    const { data, error } = await supabase
-      .from('products')
-      .select(`
-        *,
-        seller_contacts!inner (
-          name,
-          email,
-          phone
-        )
-      `)
-      .eq('id', id)
-      .single();
-      
-    if (error) throw error;
-    return data;
-  };
+  const { data, error } = await supabase
+    .from('products')
+    .select(`
+      *,
+      seller_contacts!inner (
+        name,
+        email,
+        phone
+      )
+    `)
+    .eq('id', id)
+    .single();
+    
+  if (error) throw error;
+  return data;
+};
 
   // Fetch products by category
   const fetchProductsByCategory = async (category: string) => {
