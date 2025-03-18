@@ -15,26 +15,11 @@ export interface Product {
   seller_id: string;
   created_at: string;
   updated_at: string;
-  // ... existing code ...
-export interface Product {
-  id: string;
-  title: string;
-  description: string;
-  price: number;
-  image: string;
-  category: string;
-  seller_id: string;
-  created_at: string;
-  updated_at: string;
-  seller_contacts?: {
-     name: string;
-     email: string;
-     phone: string;
-   } | {
-     name: string;
-     email: string;
-     phone: string;
-   }[];
+ seller_contacts?: {
+    name: string;
+    email: string;
+    phone: string;
+  };
 }
 }
 
@@ -47,7 +32,14 @@ export const useProducts = () => {
   const fetchProducts = async () => {
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select(`
+        *,
+        seller_contacts!inner (
+          name,
+          email,
+          phone
+        )
+      `)
       .order('created_at', { ascending: false });
       
     if (error) throw error;
@@ -58,7 +50,14 @@ export const useProducts = () => {
   const fetchProductById = async (id: string) => {
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select(`
+        *,
+        seller_contacts!inner (
+          name,
+          email,
+          phone
+        )
+      `)
       .eq('id', id)
       .single();
       
@@ -84,7 +83,14 @@ export const useProducts = () => {
     
     const { data, error } = await supabase
       .from('products')
-      .select('*')
+      .select(`
+        *,
+        seller_contacts!inner (
+          name,
+          email,
+          phone
+        )
+      `)
       .eq('seller_id', user.id)
       .order('created_at', { ascending: false });
       
