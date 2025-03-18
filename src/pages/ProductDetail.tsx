@@ -64,7 +64,7 @@ const ProductDetail = () => {
           .from('products')
           .select(`
             *,
-            seller_contacts (
+            seller_contacts!inner (
               name,
               email,
               phone
