@@ -2,7 +2,7 @@
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/4ba3a27e-5ebb-45d7-9c4e-a98477341f47
+
 
 ## How can I edit this code?
 
@@ -23,7 +23,7 @@ Follow these steps:
 
 ```sh
 # Step 1: Clone the repository using the project's Git URL.
-git clone https://github.com/kartik4540/srmartttt.git
+git clone <https://github.com/kartik4540/srmartttt.git>
 
 # Step 2: Navigate to the project directory.
 cd <YOUR_PROJECT_NAME>
