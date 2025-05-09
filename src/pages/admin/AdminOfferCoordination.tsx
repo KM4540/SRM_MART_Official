@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarDays, Clock, MapPin, Loader2, Shield, RefreshCw, CheckCircle, QrCode, Info, Printer } from 'lucide-react';
+import { CalendarDays, Clock, MapPin, Loader2, Shield, RefreshCw, CheckCircle, QrCode, Info, Printer, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -45,6 +45,7 @@ interface PickupSchedule {
   item_delivered: boolean;
   transaction_id?: string;
   buyer_pickup_time?: string;
+  seller_no_show?: boolean;
 }
 
 interface AcceptedOffer {
@@ -93,6 +94,7 @@ export default function AdminOfferCoordination() {
   const [currentSellerQrCode, setCurrentSellerQrCode] = useState<string | null>(null);
   const [currentOffer, setCurrentOffer] = useState<AcceptedOffer | null>(null);
   const [isLoadingQrCode, setIsLoadingQrCode] = useState(false);
+  const [showNoShowDialog, setShowNoShowDialog] = useState(false);
 
   useEffect(() => {
     checkAdminStatus();
@@ -249,7 +251,8 @@ export default function AdminOfferCoordination() {
           item_received,
           item_delivered,
           transaction_id,
-          buyer_pickup_time
+          buyer_pickup_time,
+          seller_no_show
         `)
         .in('offer_id', offerIds);
 
@@ -551,6 +554,74 @@ export default function AdminOfferCoordination() {
     };
   };
 
+  // Handle seller no-show
+  const handleSellerNoShow = (pickupId: string, offer: AcceptedOffer) => {
+    setProcessingPickupId(pickupId);
+    setCurrentOffer(offer);
+    setShowNoShowDialog(true);
+  };
+
+  // Mark seller as no-show and the item needs to be returned
+  const confirmSellerNoShow = async () => {
+    if (!processingPickupId || !currentOffer) {
+      toast.error("Missing pickup or offer information");
+      return;
+    }
+
+    setSchedulingLoading(true);
+    try {
+      // Update pickup schedule to mark seller as no-show
+      const { error: updatePickupError } = await supabase
+        .from('pickup_schedules')
+        .update({ 
+          seller_no_show: true, 
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', processingPickupId);
+
+      if (updatePickupError) throw updatePickupError;
+
+      // Update offer status to indicate seller no-show
+      const { error: updateOfferError } = await supabase
+        .from('price_offers')
+        .update({ 
+          status: 'seller_no_show',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', currentOffer.id);
+
+      if (updateOfferError) throw updateOfferError;
+
+      // Update local state
+      const updatedPickups = { ...scheduledPickups };
+      const pickup = Object.values(updatedPickups).find(p => p.id === processingPickupId);
+      if (pickup) {
+        pickup.seller_no_show = true;
+        setScheduledPickups(updatedPickups);
+      }
+
+      // Remove this offer from the accepted offers list
+      setAcceptedOffers(prevOffers =>
+        prevOffers.filter(offer => offer.id !== currentOffer.id)
+      );
+
+      toast.success("Marked seller as no-show. Item needs to be returned.");
+      setShowNoShowDialog(false);
+
+      // Refresh data
+      await fetchExistingPickups();
+      await fetchAcceptedOffers();
+
+    } catch (error: any) {
+      console.error('Error marking seller as no-show:', error);
+      toast.error(`Failed to mark seller as no-show: ${error.message}`);
+    } finally {
+      setSchedulingLoading(false);
+      setProcessingPickupId(null);
+      setCurrentOffer(null);
+    }
+  };
+
   // Render logic
   if (!isAdmin) {
     return (
@@ -620,6 +691,14 @@ export default function AdminOfferCoordination() {
                           >
                             {pickup.item_delivered ? 'Item Delivered' : 'Not Delivered'}
                           </Badge>
+                          {pickup.seller_no_show && (
+                            <Badge 
+                              variant="secondary"
+                              className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                            >
+                              Seller No-Show
+                            </Badge>
+                          )}
                         </div>
                         {pickup.transaction_id && (
                           <p className="text-xs mt-2 text-muted-foreground">Transaction ID: {pickup.transaction_id}</p>
@@ -638,7 +717,7 @@ export default function AdminOfferCoordination() {
                       <>
                         <Button
                           onClick={() => handleItemReceived(pickup.id)}
-                          disabled={pickup.item_received || isProcessing}
+                          disabled={pickup.item_received || isProcessing || pickup.seller_no_show}
                           variant="outline"
                           size="sm"
                         >
@@ -647,14 +726,26 @@ export default function AdminOfferCoordination() {
                         </Button>
                         <Button
                           onClick={() => handleItemDelivered(pickup.id, offer)}
-                          disabled={!pickup.item_received || pickup.item_delivered || isProcessing}
+                          disabled={!pickup.item_received || pickup.item_delivered || isProcessing || pickup.seller_no_show}
                           variant="outline"
                           size="sm"
                         >
                            {isProcessing && pickup.item_received && !pickup.item_delivered ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle size={16} className="mr-2" />}
                           Item Given
                         </Button>
-                        {offer.seller?.payment_qr_url && (
+                        {!pickup.item_received && !pickup.seller_no_show && (
+                          <Button
+                            onClick={() => handleSellerNoShow(pickup.id, offer)}
+                            variant="destructive"
+                            size="sm"
+                            className="col-span-2 mt-2"
+                            disabled={isProcessing || pickup.item_received}
+                          >
+                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <AlertCircle size={16} className="mr-2" />}
+                            Seller Didn't Show
+                          </Button>
+                        )}
+                        {offer.seller?.payment_qr_url && !pickup.seller_no_show && (
                            <Button
                              onClick={() => handleShowQrCode(offer)}
                              variant="secondary"
@@ -944,6 +1035,37 @@ export default function AdminOfferCoordination() {
          </Dialog>
        )}
 
+      {/* Seller No-Show Dialog */}
+      <Dialog open={showNoShowDialog} onOpenChange={(open) => { if (!open) { setProcessingPickupId(null); setCurrentOffer(null); } setShowNoShowDialog(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Seller No-Show</DialogTitle>
+            <DialogDescription>
+              This will mark the seller as a no-show. The item will need to be returned to the seller, and the trade will be canceled.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="rounded-md bg-amber-50 p-4 border border-amber-100">
+              <div className="flex items-start">
+                <AlertCircle className="h-5 w-5 text-amber-600 mr-2 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-amber-800">Confirmation Required</h3>
+                  <p className="text-sm text-amber-700 mt-1">
+                    Are you sure the seller didn't show up for the scheduled pickup? This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNoShowDialog(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmSellerNoShow} disabled={schedulingLoading}>
+              {schedulingLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirm Seller No-Show
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Footer />
     </>

@@ -13,7 +13,8 @@ import {
   StoreIcon,
   Plus,
   Trash2,
-  ArrowLeft
+  ArrowLeft,
+  AlertCircle
 } from 'lucide-react';
 import {
   Card,
@@ -44,6 +45,7 @@ const MyPendingItems = () => {
   const [pendingItems, setPendingItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [noShowItems, setNoShowItems] = useState<any[]>([]);
 
   useEffect(() => {
     if (!user) {
@@ -52,6 +54,7 @@ const MyPendingItems = () => {
     }
 
     fetchPendingItems();
+    fetchNoShowItems();
   }, [user, navigate]);
 
   const fetchPendingItems = async () => {
@@ -70,6 +73,59 @@ const MyPendingItems = () => {
       toast.error(error.message || 'Error fetching pending items');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchNoShowItems = async () => {
+    try {
+      // Get all offers with status "seller_no_show" where the current user is the seller
+      const { data: offerData, error: offerError } = await supabase
+        .from('price_offers')
+        .select(`
+          id, 
+          product_id, 
+          status, 
+          offered_price,
+          products (id, title, image),
+          pickup_schedules (id, pickup_location_id, pickup_time, seller_no_show)
+        `)
+        .eq('seller_id', user?.id)
+        .eq('status', 'seller_no_show');
+
+      if (offerError) throw offerError;
+      
+      // Fetch location info for these offers
+      if (offerData && offerData.length > 0) {
+        const locationIds = offerData
+          .map(offer => offer.pickup_schedules?.[0]?.pickup_location_id)
+          .filter(Boolean);
+          
+        if (locationIds.length > 0) {
+          const { data: locationData } = await supabase
+            .from('pickup_locations')
+            .select('id, name')
+            .in('id', locationIds);
+            
+          // Combine the data
+          const enhancedData = offerData.map(offer => {
+            const locationId = offer.pickup_schedules?.[0]?.pickup_location_id;
+            const location = locationData?.find(loc => loc.id === locationId);
+            
+            return {
+              ...offer,
+              location_name: location?.name || 'Unknown location'
+            };
+          });
+          
+          setNoShowItems(enhancedData);
+        } else {
+          setNoShowItems(offerData);
+        }
+      } else {
+        setNoShowItems([]);
+      }
+    } catch (error: any) {
+      console.error('Error fetching no-show items:', error);
     }
   };
 
@@ -109,6 +165,12 @@ const MyPendingItems = () => {
         return (
           <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 flex items-center gap-1">
             <XCircle size={12} /> Rejected
+          </Badge>
+        );
+      case 'seller_no_show':
+        return (
+          <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 flex items-center gap-1">
+            <AlertCircle size={12} /> No-Show
           </Badge>
         );
       default:
@@ -174,6 +236,54 @@ const MyPendingItems = () => {
             <li>You will be notified when a buyer purchases your item</li>
           </ul>
         </div>
+
+        {/* No-Show Items Section */}
+        {noShowItems.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold mb-4 flex items-center">
+              <AlertCircle size={20} className="mr-2 text-red-500" /> 
+              Items Needing Pickup
+            </h2>
+            <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg mb-4">
+              <p className="text-red-700 dark:text-red-400">
+                You missed your scheduled drop-off time for the following items. Please contact the coordinator to arrange pickup of your items.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {noShowItems.map((item) => (
+                <Card key={item.id} className="overflow-hidden">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">{item.products.title}</CardTitle>
+                    {getStatusBadge('seller_no_show')}
+                  </CardHeader>
+                  <CardContent className="pb-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-secondary/30 rounded-lg h-24 overflow-hidden">
+                        {item.products.image && (
+                          <img 
+                            src={item.products.image} 
+                            alt={item.products.title}
+                            className="w-full h-full object-cover"
+                          />
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-sm"><strong>Price:</strong> ₹{item.offered_price}</p>
+                        <p className="text-sm"><strong>Drop-off Location:</strong> {item.location_name || 'Unknown location'}</p>
+                        <p className="text-sm"><strong>Status:</strong> Needs pickup</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <p className="text-sm text-muted-foreground">
+                      Please contact coordinator to arrange item pickup
+                    </p>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-between items-center mb-8">
           <p className="text-muted-foreground">
@@ -289,6 +399,27 @@ const MyPendingItems = () => {
             ))}
           </div>
         )}
+
+        {/* Delete confirmation dialog */}
+        <AlertDialog open={!!itemToDelete} onOpenChange={(open) => !open && setItemToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete this item from your pending list.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={() => itemToDelete && handleDelete(itemToDelete)}
+                className="bg-red-500 hover:bg-red-600"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
       <Footer />
     </AnimatedLayout>
