@@ -40,6 +40,8 @@ import Footer from '@/components/Footer';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProducts } from '@/hooks/useProducts';
 import { supabase } from '@/integrations/supabase/client';
+import BuyButton from '@/components/MakeOfferForm';
+import { Badge } from '@/components/ui/badge';
 
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -47,14 +49,16 @@ const ProductDetail = () => {
   const { user } = useAuth();
   const { addToCart } = useCart();
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
-  const { useDeleteProductMutation } = useProducts();
+  const { useDeleteProductMutation, updateProductStatus } = useProducts();
   const deleteProductMutation = useDeleteProductMutation();
   const [isFavorite, setIsFavorite] = useState(false);
-  const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [product, setProduct] = useState<any>(null);
-  const [isOwner, setIsOwner] = useState(false);
+  const [sellerInfo, setSellerInfo] = useState(null);
+  
+  // Check if the current user is the owner of this product
+  const isOwner = user && product && user.id === product.seller_id;
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -76,9 +80,19 @@ const ProductDetail = () => {
         if (error) throw error;
         setProduct(data);
         
-        // Check if current user is the owner of this product
-        if (user && data.seller_id === user.id) {
-          setIsOwner(true);
+        // Fetch seller info if needed
+        if (data.seller_id) {
+          const { data: sellerData, error: sellerError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', data.seller_id)
+            .single();
+          
+          if (sellerError) {
+            console.error('Error fetching seller info:', sellerError);
+          } else {
+            setSellerInfo(sellerData);
+          }
         }
       } catch (error: any) {
         setError(error.message);
@@ -99,12 +113,14 @@ const ProductDetail = () => {
     }
   }, [id, isInWishlist]);
 
-  const handleQuantityChange = (value: number) => {
-    setQuantity(Math.max(1, Math.min(10, value)));
-  };
-
   const handleAddToCart = () => {
     if (!product) return;
+    
+    // Check if product is sold
+    if (product.status === 'sold') {
+      toast.error("This product has already been sold");
+      return;
+    }
     
     // Check if user is logged in
     if (!user) {
@@ -128,6 +144,12 @@ const ProductDetail = () => {
 
   const toggleFavorite = () => {
     if (!product) return;
+    
+    // Check if product is sold
+    if (product.status === 'sold') {
+      toast.error("This product has already been sold");
+      return;
+    }
     
     // Check if user is logged in
     if (!user) {
@@ -161,6 +183,21 @@ const ProductDetail = () => {
       navigate('/my-listings');
     } catch (error) {
       toast.error('Failed to delete product');
+    }
+  };
+
+  const handleStatusUpdate = async (newStatus: 'available' | 'sold' | 'reserved') => {
+    if (!product || !user) return;
+    
+    try {
+      await updateProductStatus(product.id, newStatus);
+      
+      // Update local state
+      setProduct({ ...product, status: newStatus });
+      toast.success(`Product marked as ${newStatus}`);
+    } catch (error: any) {
+      toast.error('Failed to update product status');
+      console.error('Error updating product status:', error);
     }
   };
 
@@ -215,7 +252,7 @@ const ProductDetail = () => {
             Back
           </Button>
           
-          {isOwner && (
+          {user && user.id === product.seller_id.id && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" size="sm" className="flex items-center">
@@ -286,75 +323,56 @@ const ProductDetail = () => {
               <p className="text-muted-foreground">{product.category}</p>
             </div>
             
-            <div className="space-y-2">
-              <Button 
-                className="w-full"
-                onClick={() => navigate(`/user-profile/${product.seller_id}`)}
-              >
-                Contact Seller
-              </Button>
-            </div>
-            
             <Separator />
             
             <div className="space-y-4">
-              <div className="flex items-center space-x-4">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleQuantityChange(quantity - 1)}
-                  disabled={quantity <= 1}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <span className="font-medium text-lg">{quantity}</span>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleQuantityChange(quantity + 1)}
-                  disabled={quantity >= 10}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-              
               {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button
-                  className="flex-1"
-                  onClick={handleAddToCart}
-                >
-                  <ShoppingCart className="mr-2 h-4 w-4" />
-                  Add to Cart
-                </Button>
+              {product.status === 'sold' ? (
+                <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4 text-center">
+                  <p className="text-red-800 dark:text-red-400 font-medium">
+                    This product has already been sold
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    className="flex-1"
+                    onClick={handleAddToCart}
+                    disabled={product.status === 'sold'}
+                  >
+                    <ShoppingCart className="mr-2 h-4 w-4" />
+                    Add to Cart
+                  </Button>
 
-                <Button
-                  variant={isFavorite ? "secondary" : "outline"}
-                  onClick={toggleFavorite}
-                  className="flex-1"
-                >
-                  <Heart className="mr-2 h-4 w-4" fill={isFavorite ? "currentColor" : "none"} />
-                  {isFavorite ? 'Saved' : 'Add to Wishlist'}
-                </Button>
+                  <Button
+                    variant={isFavorite ? "secondary" : "outline"}
+                    onClick={toggleFavorite}
+                    className="flex-1"
+                    disabled={product.status === 'sold'}
+                  >
+                    <Heart className="mr-2 h-4 w-4" fill={isFavorite ? "currentColor" : "none"} />
+                    {isFavorite ? 'Saved' : 'Add to Wishlist'}
+                  </Button>
 
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="hidden sm:flex"
-                  onClick={() => {
-                    navigator.share({
-                      title: product.title,
-                      text: product.description,
-                      url: window.location.href
-                    }).catch(() => {
-                      navigator.clipboard.writeText(window.location.href);
-                      toast.success('Link copied to clipboard');
-                    });
-                  }}
-                >
-                  <Share className="h-4 w-4" />
-                </Button>
-              </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="hidden sm:flex"
+                    onClick={() => {
+                      navigator.share({
+                        title: product.title,
+                        text: product.description,
+                        url: window.location.href
+                      }).catch(() => {
+                        navigator.clipboard.writeText(window.location.href);
+                        toast.success('Link copied to clipboard');
+                      });
+                    }}
+                  >
+                    <Share className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
               
               {/* Share button for mobile - displayed only on small screens */}
               <div className="sm:hidden">
@@ -376,6 +394,21 @@ const ProductDetail = () => {
                   Share
                 </Button>
               </div>
+              
+              {/* Make Offer Form - Only show for non-owners */}
+              {user && user.id !== product.seller_id.id && product.status !== 'sold' && (
+                <div className="mt-4">
+                  <BuyButton 
+                    product={{
+                      id: product.id,
+                      title: product.title,
+                      price: product.price,
+                      seller_id: product.seller_id,
+                      status: product.status
+                    }}
+                  />
+                </div>
+              )}
             </div>
           </div>
         </div>

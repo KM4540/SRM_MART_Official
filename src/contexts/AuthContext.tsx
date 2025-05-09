@@ -9,6 +9,7 @@ interface AuthContextType {
   profile: any | null;
   session: Session | null;
   signInWithGoogle: () => Promise<void>;
+  signInWithEmailPassword: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   loading: boolean;
   updateProfile: (data: any) => Promise<void>;
@@ -136,12 +137,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Helper function to check if email domain is valid
   const isValidEmailDomain = (email?: string | null): boolean => {
     if (!email) return false;
-    return email.toLowerCase().endsWith(`@${ALLOWED_EMAIL_DOMAIN}`);
+    const lowerEmail = email.toLowerCase();
+    // Allow SRMIST domain or test accounts
+    return (
+      lowerEmail.endsWith(`@${ALLOWED_EMAIL_DOMAIN}`) ||
+      lowerEmail === 'admin@test.com' ||
+      lowerEmail === 'user@test.com'
+    );
   };
 
   // Handle invalid domain sign in attempts
   const handleInvalidDomain = async () => {
-    toast.error(`Only @${ALLOWED_EMAIL_DOMAIN} email addresses are allowed`);
+    toast.error(`Only @${ALLOWED_EMAIL_DOMAIN} email addresses or test accounts (admin@test.com, user@test.com) are allowed`);
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);
@@ -174,28 +181,108 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signInWithGoogle() {
     try {
       setLoading(true);
+      console.log("Starting Google sign in...");
       
+      // Get the current origin and ensure it's properly formatted
+      const origin = window.location.origin;
+      const redirectTo = `${origin}/auth/callback`;
+      
+      console.log("Using redirect URL:", redirectTo);
+      
+      // Check if we're coming from a sign-out
+      const isPostSignOut = new URLSearchParams(window.location.search).get('fresh') === 'true';
+      
+      if (isPostSignOut) {
+        // Clear any existing sessions first
+        await supabase.auth.signOut();
+        
+        // Clear any stored OAuth state
+        localStorage.removeItem('supabase.auth.token');
+        localStorage.removeItem('supabase.auth.refreshToken');
+        
+        // Force a completely fresh login by directly redirecting to Google OAuth
+        const state = Math.random().toString(36).substring(2);
+        localStorage.setItem('oauth_state', state);
+        
+        window.location.href = `https://sldtztnpjemxbyzwkgem.supabase.co/auth/v1/authorize?` +
+          `provider=google` +
+          `&prompt=select_account` +
+          `&hd=${ALLOWED_EMAIL_DOMAIN}` +
+          `&redirect_to=${encodeURIComponent(redirectTo)}` +
+          `&state=${state}` +
+          `&skip_http_redirect=true`;
+        return;
+      }
+      
+      // For normal sign in flow
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: redirectTo,
           queryParams: {
-            // Add hd parameter to restrict to the srmist.edu.in domain in the OAuth flow
             hd: ALLOWED_EMAIL_DOMAIN,
-            // Force Google to always show the account selector
-            prompt: "select_account"
+            prompt: "select_account",
+            access_type: "offline",
           }
         },
       });
 
       if (error) {
+        console.error("Google sign in error:", error);
+        if (error.message.includes("Unexpected failure")) {
+          toast.error("Authentication service is temporarily unavailable. Please try again later.");
+        } else {
+          toast.error(error.message || "Error signing in with Google");
+        }
         throw error;
       }
       
-      // The redirect happens automatically, so no need to navigate
+      console.log("Google sign in successful, redirecting...");
     } catch (error: any) {
       console.error("Sign in with Google error:", error);
-      toast.error(error.message || "Error signing in with Google");
+      if (error.message.includes("Unexpected failure")) {
+        toast.error("Authentication service is temporarily unavailable. Please try again later.");
+      } else {
+        toast.error(error.message || "Error signing in with Google");
+      }
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function signInWithEmailPassword(email: string, password: string) {
+    try {
+      setLoading(true);
+      
+      // Special exception for test accounts
+      const isTestAccount = email === 'admin@test.com' || email === 'user@test.com';
+      
+      // For non-test accounts, enforce the SRM domain restriction
+      if (!isTestAccount && !isValidEmailDomain(email)) {
+        toast.error(`Only @${ALLOWED_EMAIL_DOMAIN} email addresses are allowed (or test accounts)`);
+        return;
+      }
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      
+      if (error) {
+        console.error("Email sign in error:", error);
+        toast.error(error.message || "Invalid email or password");
+        throw error;
+      }
+      
+      if (data.user) {
+        setSession(data.session);
+        setUser(data.user);
+        fetchProfile(data.user.id);
+        return;
+      }
+    } catch (error: any) {
+      console.error("Sign in with email error:", error);
       throw error;
     } finally {
       setLoading(false);
@@ -204,22 +291,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     try {
-      // Sign out from Supabase
-      await supabase.auth.signOut();
+      // Clear any stored OAuth state first
+      localStorage.removeItem('supabase.auth.token');
+      localStorage.removeItem('supabase.auth.refreshToken');
+      localStorage.removeItem('oauth_state');
       
-      // Clear any local state
+      await supabase.auth.signOut();
+      setSession(null);
       setUser(null);
       setProfile(null);
-      setSession(null);
-      
-      // Show a toast to inform the user
-      toast.info("Signed out successfully");
-      
-      // Navigate back to auth page with a special parameter that ensures a fresh login
-      navigate('/auth?fresh=true');
-      
+      navigate('/');
     } catch (error: any) {
-      toast.error(error.message || "Error signing out");
+      console.error('Error signing out:', error);
+      toast.error(error.message || 'Error signing out');
     }
   }
 
@@ -263,6 +347,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profile,
     session,
     signInWithGoogle,
+    signInWithEmailPassword,
     signOut,
     loading,
     updateProfile,

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Search, Menu, X, User, Plus, ShoppingCart, Heart, LogOut, Store } from 'lucide-react';
+import { Search, Menu, X, User, Plus, ShoppingCart, Heart, LogOut, Store, Shield, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -110,14 +110,22 @@ const Navbar = () => {
       .toUpperCase() || 'U';
   };
   
+  const handleLogoClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (location.pathname !== '/') {
+      navigate('/');
+    }
+  };
+
   return (
     <header className={`sticky top-0 z-50 w-full transition-all duration-300 ${isScrolled ? 'bg-background/80 backdrop-blur-sm border-b' : ''}`}>
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
-          <Link to="/" className="flex items-center space-x-2">
+          <a href="/" onClick={handleLogoClick} className="flex items-center space-x-2">
             <span className="font-bold text-xl">SRM Mart</span>
-          </Link>
+          </a>
           
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-6">
@@ -157,6 +165,16 @@ const Navbar = () => {
                 </div>
               )}
             </div>
+            
+            {/* Admin Dashboard Button - Only visible to admins */}
+            {profile?.is_admin && (
+              <Link to="/admin">
+                <Button variant="outline" className="flex items-center gap-1 text-purple-700 border-purple-200 hover:bg-purple-50 hover:text-purple-800">
+                  <Shield className="h-4 w-4" />
+                  Admin
+                </Button>
+              </Link>
+            )}
 
             <Link to="/cart">
               <Button variant="ghost" className="relative">
@@ -213,6 +231,26 @@ const Navbar = () => {
                         My Listings
                       </DropdownMenuItem>
                     </Link>
+                    <Link to="/my-pending-items">
+                      <DropdownMenuItem>
+                        <Store className="mr-2 h-4 w-4" />
+                        My Pending Items
+                      </DropdownMenuItem>
+                    </Link>
+                    <Link to="/my-offers">
+                      <DropdownMenuItem>
+                        <DollarSign className="mr-2 h-4 w-4" />
+                        My Offers
+                      </DropdownMenuItem>
+                    </Link>
+                    {profile?.is_admin && (
+                      <Link to="/admin">
+                        <DropdownMenuItem>
+                          <Shield className="mr-2 h-4 w-4" />
+                          Admin Dashboard
+                        </DropdownMenuItem>
+                      </Link>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={signOut}>
                       <LogOut className="mr-2 h-4 w-4" />
@@ -281,6 +319,16 @@ const Navbar = () => {
                 )}
               </div>
               
+              {/* Admin Dashboard Button in Mobile Menu - Only for Admins */}
+              {profile?.is_admin && (
+                <Link to="/admin">
+                  <Button variant="outline" className="w-full justify-start text-purple-700 border-purple-200">
+                    <Shield className="h-4 w-4 mr-2" />
+                    Admin Dashboard
+                  </Button>
+                </Link>
+              )}
+              
               <Link to="/listings">
                 <Button variant="ghost" className="w-full justify-start">
                   Browse
@@ -333,6 +381,29 @@ const Navbar = () => {
                       My Listings
                     </Button>
                   </Link>
+                  
+                  <Link to="/my-pending-items">
+                    <Button variant="ghost" className="w-full justify-start">
+                      <Store className="h-4 w-4 mr-2" />
+                      My Pending Items
+                    </Button>
+                  </Link>
+                  
+                  <Link to="/my-offers">
+                    <Button variant="ghost" className="w-full justify-start">
+                      <DollarSign className="h-4 w-4 mr-2" />
+                      My Offers
+                    </Button>
+                  </Link>
+                  
+                  {profile?.is_admin && (
+                    <Link to="/admin">
+                      <Button variant="ghost" className="w-full justify-start">
+                        <Shield className="h-4 w-4 mr-2" />
+                        Admin Dashboard
+                      </Button>
+                    </Link>
+                  )}
                   
                   <Button
                     variant="ghost"

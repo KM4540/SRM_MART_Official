@@ -28,19 +28,15 @@ const CategoryPage = () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('products')
-        .select(`
-          *,
-          seller_contacts (
-            name,
-            email,
-            phone
-          )
-        `)
+        .select('*, condition, seller_contacts(name)')
         .eq('category', categoryId)
+        .eq('status', 'available')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setProducts(data || []);
+      // Additional safety check to filter out any sold items
+      const availableProducts = (data || []).filter(product => product.status !== 'sold');
+      setProducts(availableProducts);
     } catch (error: any) {
       toast.error(error.message || 'Error fetching products');
     } finally {
@@ -70,7 +66,7 @@ const CategoryPage = () => {
           </div>
           <div>
             <h1 className="text-3xl font-bold">{category.name}</h1>
-            <p className="text-muted-foreground">{products.length} items</p>
+            <p className="text-muted-foreground">{products.length} {products.length === 1 ? 'item' : 'items'}</p>
           </div>
         </div>
 
@@ -101,9 +97,9 @@ const CategoryPage = () => {
                 price={product.price}
                 image={product.image}
                 category={product.category}
-                date={new Date(product.created_at).toLocaleDateString()}
-                sellerName={product.seller_contacts?.name}
-                sellerPhone={product.seller_contacts?.phone}
+                condition={product.condition || 'Used'}
+                date={product.created_at}
+                status={product.status || 'available'}
               />
             ))}
           </div>

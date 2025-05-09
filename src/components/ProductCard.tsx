@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Heart, MapPin, Clock, IndianRupee, Phone } from 'lucide-react';
+import { Heart, MapPin, Clock, IndianRupee } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useScrollAnimation } from '@/hooks/useScrollAnimation';
@@ -15,12 +15,12 @@ interface ProductCardProps {
   price: number;
   image: string;
   category: string;
+  condition: string;
   date: string;
   location?: string;
-  sellerName?: string;
-  sellerPhone?: string;
   isFeatured?: boolean;
   className?: string;
+  status: 'available' | 'sold' | 'reserved';
 }
 
 const ProductCard: React.FC<ProductCardProps> = ({
@@ -29,12 +29,12 @@ const ProductCard: React.FC<ProductCardProps> = ({
   price,
   image,
   category,
+  condition,
   date,
   location,
-  sellerName,
-  sellerPhone,
   isFeatured = false,
   className = '',
+  status = 'available',
 }) => {
   const { addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
   const { user } = useAuth();
@@ -48,9 +48,24 @@ const ProductCard: React.FC<ProductCardProps> = ({
     setIsFavorite(isInWishlist(id));
   }, [id, isInWishlist]);
   
+  const handleCardClick = (e: React.MouseEvent) => {
+    if (!user) {
+      e.preventDefault();
+      toast.error("Please log in to view product details");
+      navigate('/auth');
+      return;
+    }
+  };
+  
   const toggleFavorite = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // Check if product is sold
+    if (status === 'sold') {
+      toast.error("This product has already been sold");
+      return;
+    }
     
     // Check if user is logged in
     if (!user) {
@@ -86,7 +101,70 @@ const ProductCard: React.FC<ProductCardProps> = ({
   
   // Format relative time
   const getRelativeTime = (dateString: string) => {
-    const date = new Date(dateString);
+    let date;
+    
+    try {
+      // First try parsing as ISO string (from database)
+      if (dateString.includes('T') || dateString.includes('Z')) {
+        date = new Date(dateString);
+      } else {
+        // If it's already been converted to a locale string, try to parse it
+        // This handles cases where the component receives an already formatted date
+        const parts = dateString.split(/[/, ]+/);
+        
+        // Handle different locale formats
+        if (parts.length >= 3) {
+          // For formats like "MM/DD/YYYY" or "Mon DD, YYYY"
+          // Extract the parts and make a best guess
+          let year, month, day;
+          
+          // Try to identify which parts are year, month, day based on their format
+          parts.forEach(part => {
+            if (part.length === 4 && !isNaN(Number(part))) {
+              // 4-digit number is likely a year
+              year = Number(part);
+            } else if (!isNaN(Number(part))) {
+              // Other numbers could be day or month
+              if (Number(part) > 12) {
+                day = Number(part);
+              } else if (!month) {
+                month = Number(part) - 1; // JS months are 0-indexed
+              } else {
+                day = Number(part);
+              }
+            } else if (isNaN(Number(part)) && part.length >= 3) {
+              // This might be a month name like "Jan", "Feb", etc.
+              const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+              const monthIndex = monthNames.findIndex(m => part.toLowerCase().startsWith(m));
+              if (monthIndex !== -1) {
+                month = monthIndex;
+              }
+            }
+          });
+          
+          // If we have all parts, create the date
+          if (year && month !== undefined && day) {
+            date = new Date(year, month, day);
+          } else {
+            // Fallback: try standard date parsing
+            date = new Date(dateString);
+          }
+        } else {
+          // Fallback: try standard date parsing
+          date = new Date(dateString);
+        }
+      }
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.error("Invalid date:", dateString);
+        return "Invalid date";
+      }
+    } catch (e) {
+      console.error("Error parsing date:", e, dateString);
+      return "Invalid date";
+    }
+    
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - date.getTime());
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -126,10 +204,19 @@ const ProductCard: React.FC<ProductCardProps> = ({
         'group bg-white dark:bg-card rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300',
         'border border-border/60 hover:border-border',
         isVisible ? 'animate-fade-in-up' : 'opacity-0',
+        status === 'sold' ? 'opacity-75' : '',
         className
       )}
+      onClick={handleCardClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          handleCardClick(e as any);
+        }
+      }}
     >
-      <Link to={`/product/${id}`}>
+      <Link to={`/product/${id}`} onClick={handleCardClick} className="block">
         <div className="relative aspect-[4/3] overflow-hidden bg-muted">
           {isFeatured && (
             <div className="absolute top-3 left-3 z-10">
@@ -139,10 +226,22 @@ const ProductCard: React.FC<ProductCardProps> = ({
             </div>
           )}
           
-          <div className="absolute bottom-3 left-3 z-10">
-            <Badge variant="outline" className={cn("text-xs", getConditionColor('Used'))}>
-              Used
+          <div className="absolute bottom-3 left-3 z-10 flex gap-2">
+            <Badge variant="outline" className={cn("text-xs", getConditionColor(condition))}>
+              {condition}
             </Badge>
+            {status !== 'available' && (
+              <Badge 
+                variant="outline" 
+                className={cn(
+                  "text-xs",
+                  status === 'reserved' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' : '',
+                  status === 'sold' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : ''
+                )}
+              >
+                {status.charAt(0).toUpperCase() + status.slice(1)}
+              </Badge>
+            )}
           </div>
           
           <Button
@@ -150,66 +249,57 @@ const ProductCard: React.FC<ProductCardProps> = ({
             variant="ghost"
             className={cn(
               "absolute top-3 right-3 z-10 bg-white/70 backdrop-blur-sm hover:bg-white/90 dark:bg-black/70 dark:hover:bg-black/90 transition-all duration-200",
-              isFavorite ? "text-destructive hover:text-destructive" : "text-muted-foreground"
+              isFavorite ? "text-destructive hover:text-destructive" : "text-muted-foreground",
+              status === 'sold' ? 'opacity-50 cursor-not-allowed' : ''
             )}
             onClick={toggleFavorite}
+            disabled={status === 'sold'}
           >
             <Heart size={18} fill={isFavorite ? "currentColor" : "none"} />
           </Button>
           
-          <div className="lazy-image-container h-full w-full">
-            <img
-              src={image}
-              alt={title}
-              className={cn(
-                "h-full w-full object-cover transition-all duration-500 group-hover:scale-105",
-                !isImageLoaded && "lazy-image-blur",
-                isImageLoaded && "lazy-image-loaded"
-              )}
-              onLoad={() => setIsImageLoaded(true)}
-            />
-          </div>
+          <img
+            src={image}
+            alt={title}
+            className={cn(
+              "w-full h-full object-cover transition-transform duration-300 group-hover:scale-105",
+              !isImageLoaded ? "blur-sm" : "",
+              status === 'sold' ? 'grayscale' : ''
+            )}
+            onLoad={() => setIsImageLoaded(true)}
+            onError={(e) => {
+              console.error("Error loading image:", image);
+              e.currentTarget.src = "https://placehold.co/400x300/e2e8f0/64748b?text=No+Image";
+            }}
+          />
         </div>
         
         <div className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs bg-secondary/80 text-muted-foreground px-2 py-0.5 rounded-full">
-              {category}
-            </span>
-            <div className="flex items-center text-xs text-muted-foreground">
-              <Clock size={12} className="mr-1" />
+          <h3 className="font-medium line-clamp-2 mb-1">{title}</h3>
+          <div className="flex items-center justify-between">
+            <p className="text-lg font-bold text-primary">
+              {formatPrice(price)}
+            </p>
+            {status === 'sold' && (
+              <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                Sold
+              </Badge>
+            )}
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1 text-muted-foreground text-sm">
+              <Clock size={14} />
               <span>{getRelativeTime(date)}</span>
             </div>
           </div>
           
-          <h3 className="font-medium line-clamp-2 mb-1 group-hover:text-primary transition-colors">
-            {title}
-          </h3>
-          
           {location && (
-            <div className="mt-1 flex items-center text-xs text-muted-foreground mb-3">
-              <MapPin size={12} className="mr-1" />
+            <div className="flex items-center gap-1 text-muted-foreground text-sm">
+              <MapPin size={14} />
               <span>{location}</span>
             </div>
           )}
-          
-          {sellerName && (
-            <div className="mt-1 flex items-center text-xs text-muted-foreground mb-3">
-              <span>Seller: {sellerName}</span>
-            </div>
-          )}
-          
-          {sellerPhone && (
-            <div className="mt-1 flex items-center text-xs text-muted-foreground mb-3">
-              <Phone size={12} className="mr-1" />
-              <span>{sellerPhone}</span>
-            </div>
-          )}
-          
-          <div className="text-lg font-semibold text-foreground flex items-center">
-            <IndianRupee size={16} className="mr-1" />
-            {formatPrice(price).replace('₹', '')}
-          </div>
         </div>
       </Link>
     </div>

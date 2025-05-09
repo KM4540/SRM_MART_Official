@@ -1,9 +1,8 @@
-
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Mail, User, Phone, IdCard, KeyRound, Lock, CheckCircle, AlertCircle } from "lucide-react";
+import { Mail, User, IdCard, KeyRound, Lock, CheckCircle, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,8 +18,6 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
-const phoneRegex = /^[6-9]\d{9}$/;
-
 const registerSchema = z.object({
   name: z
     .string()
@@ -31,9 +28,6 @@ const registerSchema = z.object({
     .email("Please enter a valid email address")
     .endsWith("@srmist.edu.in", "Only @srmist.edu.in email addresses are allowed")
     .transform(email => email.toLowerCase().trim()), // Normalize email
-  phone: z
-    .string()
-    .regex(phoneRegex, "Please enter a valid 10-digit Indian mobile number"),
   studentId: z
     .string()
     .min(8, "Student ID must be at least 8 characters")
@@ -60,7 +54,7 @@ const RegisterForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
-  const { signUp } = useAuth();
+  const { signInWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   const form = useForm<RegisterValues>({
@@ -68,7 +62,6 @@ const RegisterForm = () => {
     defaultValues: {
       name: "",
       email: "",
-      phone: "",
       studentId: "",
       username: "",
       password: "",
@@ -107,13 +100,20 @@ const RegisterForm = () => {
 
     setIsLoading(true);
     try {
-      await signUp(data.email, data.password, {
-        name: data.name,
-        phone: data.phone,
-        studentId: data.studentId,
-        username: data.username,
-        full_name: data.name // Ensure this field is saved for profiles table
+      const { error } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          data: {
+            name: data.name,
+            studentId: data.studentId,
+            username: data.username,
+            full_name: data.name
+          }
+        }
       });
+      
+      if (error) throw error;
       
       toast.success("Registration successful! You can now log in.");
       navigate('/auth?mode=login');
@@ -217,15 +217,15 @@ const RegisterForm = () => {
           
           <FormField
             control={form.control}
-            name="phone"
+            name="studentId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Phone Number</FormLabel>
+                <FormLabel>Student ID</FormLabel>
                 <FormControl>
                   <div className="relative">
-                    <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <IdCard className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="9XXXXXXXXX"
+                      placeholder="RA2211XXXXXXX"
                       className="pl-10"
                       {...field}
                     />
@@ -236,27 +236,6 @@ const RegisterForm = () => {
             )}
           />
         </div>
-        
-        <FormField
-          control={form.control}
-          name="studentId"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Student ID</FormLabel>
-              <FormControl>
-                <div className="relative">
-                  <IdCard className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="RA2211XXXXXXX"
-                    className="pl-10"
-                    {...field}
-                  />
-                </div>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
         
         <FormField
           control={form.control}

@@ -8,10 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { User, Mail, Phone } from 'lucide-react';
+import { User, Mail, MapPin, QrCode, Info } from 'lucide-react';
 import AnimatedLayout from '@/components/AnimatedLayout';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import type { Database } from '@/types/supabase';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+
+type Profile = Database['public']['Tables']['profiles']['Row'];
 
 const categories = [
   'Electronics',
@@ -34,6 +39,7 @@ const Sell = () => {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [showQRDialog, setShowQRDialog] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -42,19 +48,39 @@ const Sell = () => {
     condition: '',
     image: null as File | null,
     sellerName: '',
-    sellerEmail: '',
-    sellerPhone: ''
+    sellerEmail: ''
   });
 
-  // Pre-fill user data when component mounts or user changes
+  // Pre-fill user data and check QR code when component mounts
   useEffect(() => {
     if (user && profile) {
       setFormData(prev => ({ 
         ...prev, 
         sellerName: profile.full_name || '',
-        sellerEmail: user.email || '',
-        sellerPhone: profile.phone || ''
+        sellerEmail: user.email || ''
       }));
+
+      // Check if user has uploaded QR code
+      const checkQRCode = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('payment_qr_url')
+            .eq('id', user.id)
+            .single();
+
+          if (error) throw error;
+
+          // Show dialog if no QR code is found
+          if (!data || !data.payment_qr_url) {
+            setShowQRDialog(true);
+          }
+        } catch (error) {
+          console.error('Error checking QR code:', error);
+        }
+      };
+
+      checkQRCode();
     }
   }, [user, profile]);
 
@@ -75,9 +101,25 @@ const Sell = () => {
         return;
       }
 
-      // Validate phone number
-      if (!/^\d{10}$/.test(formData.sellerPhone)) {
-        toast.error('Please enter a valid 10-digit phone number');
+      // Check QR code again before submission
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('payment_qr_url')
+          .eq('id', user.id)
+          .single();
+
+        if (error) throw error;
+
+        // Show dialog if no QR code is found
+        if (!data || !data.payment_qr_url) {
+          setShowQRDialog(true);
+          setLoading(false);
+          return;
+        }
+      } catch (error) {
+        console.error('Error checking QR code:', error);
+        toast.error('Failed to verify payment QR code');
         setLoading(false);
         return;
       }
@@ -102,9 +144,9 @@ const Sell = () => {
         imageUrl = publicUrl;
       }
 
-      // Insert product
-      const { data: product, error: productError } = await supabase
-        .from('products')
+      // Insert into pending_products instead of directly to products
+      const { data: pendingProduct, error: pendingError } = await supabase
+        .from('pending_products')
         .insert([
           {
             title: formData.title,
@@ -113,31 +155,19 @@ const Sell = () => {
             category: formData.category,
             condition: formData.condition,
             image: imageUrl,
-            seller_id: user.id
+            seller_id: user.id,
+            status: 'pending'
           }
         ])
         .select()
         .single();
 
-      if (productError) throw productError;
+      if (pendingError) throw pendingError;
 
-      // Insert seller contact
-      const { error: contactError } = await supabase
-        .from('seller_contacts')
-        .insert([
-          {
-            product_id: product.id,
-            name: formData.sellerName,
-            email: user.email,
-            phone: formData.sellerPhone
-          }
-        ]);
-
-      if (contactError) throw contactError;
-
-      toast.success('Product listed successfully!');
-      navigate('/my-listings');
+      toast.success('Product submitted for review! We will notify you once approved.');
+      navigate('/my-pending-items');
     } catch (error: any) {
+      console.error('Error listing product:', error);
       toast.error(error.message || 'Error listing product');
     } finally {
       setLoading(false);
@@ -160,7 +190,32 @@ const Sell = () => {
     <AnimatedLayout>
       <Navbar />
       <main className="container max-w-2xl py-24 px-4 md:px-6">
+        <Dialog open={showQRDialog} onOpenChange={setShowQRDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Payment QR Code Required</DialogTitle>
+              <DialogDescription>
+                Before listing products, you need to upload your payment QR code. This will be used by buyers to make payments.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end space-x-4 mt-4">
+              <Button variant="outline" onClick={() => navigate('/profile')}>
+                <QrCode className="w-4 h-4 mr-2" />
+                Upload QR Code
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <h1 className="text-3xl font-bold mb-8">List Your Product</h1>
+        
+        {/* Service Charge Notice */}
+        <Alert className="mb-6 bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800">
+          <Info className="h-4 w-4 mr-2" />
+          <AlertDescription>
+            <strong>Seller Fee:</strong> A 2% service charge applies to all successful sales, which will be deducted when you receive payment from buyers.
+          </AlertDescription>
+        </Alert>
         
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
@@ -279,35 +334,18 @@ const Sell = () => {
             <p className="text-xs text-muted-foreground mt-1">Your email cannot be changed</p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="sellerPhone">Your Phone Number</Label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="sellerPhone"
-                type="tel"
-                className="pl-10"
-                value={formData.sellerPhone}
-                onChange={(e) => {
-                  // Only allow numeric input
-                  const value = e.target.value.replace(/\D/g, '');
-                  // Limit to 10 digits
-                  const truncatedValue = value.slice(0, 10);
-                  setFormData(prev => ({ ...prev, sellerPhone: truncatedValue }));
-                }}
-                pattern="[0-9]{10}"
-                maxLength={10}
-                minLength={10}
-                placeholder="10-digit mobile number"
-                required
-                title="Please enter a valid 10-digit mobile number"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Enter a 10-digit mobile number without spaces or special characters</p>
+          <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-4">
+            <h3 className="font-medium text-blue-700 dark:text-blue-400 flex items-center gap-2">
+              <MapPin size={16} /> Gateway System Information
+            </h3>
+            <p className="text-sm text-blue-700/70 dark:text-blue-400/70 mt-1">
+              Your listing will be reviewed by our admins before it appears in the marketplace. 
+              Once approved, buyers can purchase and pick up the item from your selected location.
+            </p>
           </div>
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Listing...' : 'List Product'}
+            {loading ? 'Submitting...' : 'Submit for Review'}
           </Button>
         </form>
       </main>

@@ -1,8 +1,20 @@
+# SRM Mart
 
+A platform for SRM Institute students to buy and sell second-hand college items.
+
+## Documentation
+
+For complete documentation, please refer to the [SRM Mart Documentation](./docs/SRMMart_Documentation.md).
 
 ## Project info
 
-
+SRM Mart is built with:
+- Vite
+- TypeScript
+- React
+- shadcn-ui
+- Tailwind CSS
+- Supabase (for database, authentication, and storage)
 
 ## How can I edit this code?
 
@@ -20,10 +32,10 @@ Follow these steps:
 
 ```sh
 # Step 1: Clone the repository using the project's Git URL.
-git clone <https://github.com/kartik4540/srmartttt.git>
+git clone https://github.com/kartik4540/srmartttt.git
 
 # Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+cd srmartttt
 
 # Step 3: Install the necessary dependencies.
 npm i
@@ -58,8 +70,9 @@ This project is built with .
 
 ## How can I deploy this project?
 
-Simply open [Lovable](https://lovable.dev/projects/4ba3a27e-5ebb-45d7-9c4e-a98477341f47) and click on Share -> Publish.
+You can deploy this project to a service like Netlify:
 
-## I want to use a custom domain - is that possible?
-
-We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)
+1. Connect your repository to Netlify
+2. Set the build command to `npm run build`
+3. Set the publish directory to `dist`
+4. Add environment variables for Supabase URL and anon key

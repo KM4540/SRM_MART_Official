@@ -21,7 +21,10 @@ const Index = () => {
   const [recentProducts, setRecentProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const visibleItems = useProgressiveLoading(recentProducts, 150) || [];
+  
+  // Filter out any sold items before progressive loading just as a safety measure
+  const availableProducts = recentProducts.filter(product => product.status !== 'sold');
+  const visibleItems = useProgressiveLoading(availableProducts, 150) || [];
   
   // Show welcome toast only on first mount
   useEffect(() => {
@@ -49,6 +52,7 @@ const Index = () => {
             phone
           )
         `)
+        .eq('status', 'available')
         .order('created_at', { ascending: false })
         .limit(8);
 

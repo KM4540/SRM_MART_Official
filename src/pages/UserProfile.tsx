@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Mail, Phone, User, Store } from 'lucide-react';
+import { ArrowLeft, Store, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent } from '@/components/ui/card';
@@ -41,8 +41,7 @@ const UserProfile = () => {
             *,
             seller_contacts!inner (
               name,
-              email,
-              phone
+              email
             )
           `)
           .eq('seller_id', userId)
@@ -120,20 +119,6 @@ const UserProfile = () => {
                   <h1 className="text-2xl font-bold">{user.full_name || 'Anonymous User'}</h1>
                   <p className="text-muted-foreground text-sm">@{user.username || 'user'}</p>
                 </div>
-                
-                <Separator />
-                
-                <div className="space-y-2">
-                  <div className="flex items-center">
-                    <Mail className="h-4 w-4 mr-2 text-muted-foreground" />
-                    <p>{user.email || 'Email not available'}</p>
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <Phone className="h-4 w-4 mr-2 text-muted-foreground" />
-                    <p>{user.phone || 'Phone not available'}</p>
-                  </div>
-                </div>
               </div>
             </div>
           </CardContent>
@@ -159,7 +144,9 @@ const UserProfile = () => {
                 price={product.price}
                 image={product.image}
                 category={product.category}
-                date={new Date(product.created_at).toLocaleDateString()}
+                condition={product.condition}
+                date={product.created_at}
+                status={product.status || 'available'}
               />
             ))}
           </div>

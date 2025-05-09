@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,13 +14,14 @@ export interface Product {
   seller_id: string;
   created_at: string;
   updated_at: string;
- seller_contacts?: {
+  status: 'available' | 'sold' | 'reserved';
+  seller_contacts?: {
     name: string;
     email: string;
     phone: string;
   };
 }
-}
+
 
 export const useProducts = () => {
   const { user } = useAuth();
@@ -199,6 +199,21 @@ export const useProducts = () => {
     return data;
   };
 
+  // Update product status
+  const updateProductStatus = async (id: string, status: 'available' | 'sold' | 'reserved') => {
+    if (!user) throw new Error('You must be logged in to update a product status');
+    
+    const { data, error } = await supabase
+      .from('products')
+      .update({ status })
+      .eq('id', id)
+      .eq('seller_id', user.id)
+      .select();
+      
+    if (error) throw error;
+    return data[0];
+  };
+
   // React Query hooks
   const useAllProducts = () => 
     useQuery({
@@ -287,6 +302,7 @@ export const useProducts = () => {
     
     // Functions
     uploadProductImage,
+    updateProductStatus,
     
     // State
     uploading

@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ProductCard from '@/components/ProductCard';
 
@@ -10,52 +9,42 @@ interface RecentListingsProps {
 }
 
 const RecentListings = ({ products, visibleItems, loading }: RecentListingsProps) => {
-  const scrollToTop = () => {
-    window.scrollTo(0, 0);
-  };
+  if (loading) {
+    return <div className="container px-4 md:px-6 py-12">Loading recent listings...</div>;
+  }
+
+  if (products.length === 0) {
+    return null;
+  }
 
   return (
-    <div className="container px-4 md:px-6">
-      <div className="flex flex-wrap items-center justify-between mb-10">
+    <section className="container px-4 md:px-6">
+      <div className="flex justify-between items-center mb-8">
         <div>
           <span className="text-sm font-medium text-primary">Just Added</span>
-          <h2 className="text-2xl font-bold mt-1">Recent Listings</h2>
+          <h2 className="text-3xl font-bold tracking-tighter">Recent Listings</h2>
         </div>
-        
-        <Link to="/listings" onClick={scrollToTop}>
-          <Button variant="outline" className="group">
-            All Listings
-            <ArrowRight size={16} className="ml-1 transition-transform group-hover:translate-x-1" />
-          </Button>
+        <Link to="/listings">
+          <Button variant="outline">View All</Button>
         </Link>
       </div>
       
-      {loading ? (
-        <div className="flex justify-center items-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        </div>
-      ) : visibleItems.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">No recent listings found</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {visibleItems.map((product) => (
-            <ProductCard
-              key={product.id}
-              id={product.id}
-              title={product.title}
-              price={product.price}
-              image={product.image}
-              category={product.category}
-              date={new Date(product.created_at).toLocaleDateString()}
-              sellerName={product.seller_contacts?.[0]?.name}
-              sellerPhone={product.seller_contacts?.[0]?.phone}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+        {visibleItems.map((product) => (
+          <ProductCard
+            key={product.id}
+            id={product.id}
+            title={product.title}
+            price={product.price}
+            image={product.image}
+            category={product.category}
+            condition={product.condition || 'Used'}
+            date={product.created_at}
+            status={product.status || 'available'}
+          />
+        ))}
+      </div>
+    </section>
   );
 };
 

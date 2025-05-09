@@ -47,14 +47,8 @@ const Listings = () => {
       setLoading(true);
       let query = supabase
         .from('products')
-        .select(`
-          *,
-          seller_contacts (
-            name,
-            email,
-            phone
-          )
-        `)
+        .select('*, condition, seller_contacts(name)')
+        .eq('status', 'available')
         .order('created_at', { ascending: false });
 
       // Apply search filter if search query exists
@@ -70,7 +64,9 @@ const Listings = () => {
       const { data, error } = await query;
 
       if (error) throw error;
-      setProducts(data || []);
+      // Additional safety check to filter out any sold items
+      const availableProducts = (data || []).filter(product => product.status !== 'sold');
+      setProducts(availableProducts);
     } catch (error: any) {
       toast.error(error.message || 'Error fetching products');
       setProducts([]);
@@ -148,9 +144,9 @@ const Listings = () => {
                 price={product.price}
                 image={product.image}
                 category={product.category}
-                date={new Date(product.created_at).toLocaleDateString()}
-                sellerName={product.seller_contacts?.name}
-                sellerPhone={product.seller_contacts?.phone}
+                condition={product.condition || 'Used'}
+                date={product.created_at}
+                status={product.status || 'available'}
               />
             ))}
           </div>

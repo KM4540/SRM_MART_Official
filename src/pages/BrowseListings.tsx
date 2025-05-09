@@ -22,14 +22,7 @@ const BrowseListings = () => {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select(`
-          *,
-          seller_contacts (
-            name,
-            email,
-            phone
-          )
-        `)
+        .select('*, condition, seller_contacts(name)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -83,9 +76,9 @@ const BrowseListings = () => {
                 price={product.price}
                 image={product.image}
                 category={product.category}
-                date={new Date(product.created_at).toLocaleDateString()}
-                sellerName={product.seller_contacts?.[0]?.name}
-                sellerPhone={product.seller_contacts?.[0]?.phone}
+                condition={product.condition || 'Used'}
+                date={product.created_at}
+                status={product.status || 'available'}
               />
             ))}
           </div>

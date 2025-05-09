@@ -17,14 +17,15 @@ const CategorySection = () => {
 
   const fetchCategoryCounts = async () => {
     try {
-      // Get all products
+      // Get all products that are available (not sold)
       const { data: products, error } = await supabase
         .from('products')
-        .select('category');
+        .select('category, status')
+        .eq('status', 'available');
 
       if (error) throw error;
 
-      console.log('All products:', products); // Debug log for all products
+      console.log('Available products:', products); // Debug log for products
       console.log('Available categories:', CATEGORIES.map(c => c.id)); // Debug log for available categories
 
       // Initialize counts for all categories
@@ -33,10 +34,10 @@ const CategorySection = () => {
         counts[category.id] = 0;
       });
 
-      // Count products per category
+      // Count products per category (only unsold ones)
       products?.forEach(product => {
         console.log('Product category:', product.category); // Debug log for each product's category
-        if (product.category && counts[product.category] !== undefined) {
+        if (product.category && counts[product.category] !== undefined && product.status !== 'sold') {
           counts[product.category]++;
         }
       });

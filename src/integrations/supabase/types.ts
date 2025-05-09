@@ -103,6 +103,10 @@ export type Database = {
           seller_id: string | null
           title: string
           updated_at: string | null
+          condition: string | null
+          is_approved: boolean
+          pickup_location_id: string | null
+          status: 'available' | 'sold' | 'reserved'
         }
         Insert: {
           category?: string | null
@@ -114,6 +118,10 @@ export type Database = {
           seller_id?: string | null
           title: string
           updated_at?: string | null
+          condition?: string | null
+          is_approved?: boolean
+          pickup_location_id?: string | null
+          status?: 'available' | 'sold' | 'reserved'
         }
         Update: {
           category?: string | null
@@ -125,6 +133,10 @@ export type Database = {
           seller_id?: string | null
           title?: string
           updated_at?: string | null
+          condition?: string | null
+          is_approved?: boolean
+          pickup_location_id?: string | null
+          status?: 'available' | 'sold' | 'reserved'
         }
         Relationships: []
       }
@@ -138,6 +150,8 @@ export type Database = {
           phone: string | null
           updated_at: string | null
           username: string | null
+          is_admin: boolean
+          payment_qr_url: string | null
         }
         Insert: {
           avatar_url?: string | null
@@ -148,6 +162,8 @@ export type Database = {
           phone?: string | null
           updated_at?: string | null
           username?: string | null
+          is_admin?: boolean
+          payment_qr_url?: string | null
         }
         Update: {
           avatar_url?: string | null
@@ -158,6 +174,8 @@ export type Database = {
           phone?: string | null
           updated_at?: string | null
           username?: string | null
+          is_admin?: boolean
+          payment_qr_url?: string | null
         }
         Relationships: []
       }
@@ -167,7 +185,7 @@ export type Database = {
           product_id: string
           name: string
           email: string
-          phone: string
+          phone: string | null
           created_at: string | null
         }
         Insert: {
@@ -175,7 +193,7 @@ export type Database = {
           product_id: string
           name: string
           email: string
-          phone: string
+          phone?: string | null
           created_at?: string | null
         }
         Update: {
@@ -183,7 +201,7 @@ export type Database = {
           product_id?: string
           name?: string
           email?: string
-          phone?: string
+          phone?: string | null
           created_at?: string | null
         }
         Relationships: [
@@ -226,6 +244,160 @@ export type Database = {
           {
             foreignKeyName: "wishlist_items_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      pickup_locations: {
+        Row: {
+          id: string
+          name: string
+          address: string
+          description: string | null
+          created_at: string | null
+          is_active: boolean
+        }
+        Insert: {
+          id?: string
+          name: string
+          address: string
+          description?: string | null
+          created_at?: string | null
+          is_active?: boolean
+        }
+        Update: {
+          id?: string
+          name?: string
+          address?: string
+          description?: string | null
+          created_at?: string | null
+          is_active?: boolean
+        }
+        Relationships: []
+      }
+      pending_products: {
+        Row: {
+          id: string
+          title: string
+          description: string | null
+          price: number
+          category: string | null
+          condition: string | null
+          image: string | null
+          seller_id: string
+          created_at: string | null
+          status: string
+          admin_notes: string | null
+          pickup_location_id: string | null
+        }
+        Insert: {
+          id?: string
+          title: string
+          description?: string | null
+          price: number
+          category?: string | null
+          condition?: string | null
+          image?: string | null
+          seller_id: string
+          created_at?: string | null
+          status?: string
+          admin_notes?: string | null
+          pickup_location_id?: string | null
+        }
+        Update: {
+          id?: string
+          title?: string
+          description?: string | null
+          price?: number
+          category?: string | null
+          condition?: string | null
+          image?: string | null
+          seller_id?: string
+          created_at?: string | null
+          status?: string
+          admin_notes?: string | null
+          pickup_location_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_products_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pending_products_pickup_location_id_fkey"
+            columns: ["pickup_location_id"]
+            isOneToOne: false
+            referencedRelation: "pickup_locations"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      price_offers: {
+        Row: {
+          id: string
+          product_id: string
+          buyer_id: string
+          offered_price: number
+          seller_id: string
+          status: string
+          seller_counter_price: number | null
+          buyer_message: string | null
+          seller_message: string | null
+          created_at: string | null
+          updated_at: string | null
+          is_read: boolean
+        }
+        Insert: {
+          id?: string
+          product_id: string
+          buyer_id: string
+          offered_price: number
+          seller_id: string
+          status?: string
+          seller_counter_price?: number | null
+          buyer_message?: string | null
+          seller_message?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          is_read?: boolean
+        }
+        Update: {
+          id?: string
+          product_id?: string
+          buyer_id?: string
+          offered_price?: number
+          seller_id?: string
+          status?: string
+          seller_counter_price?: number | null
+          buyer_message?: string | null
+          seller_message?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+          is_read?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_offers_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_offers_buyer_id_fkey"
+            columns: ["buyer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_offers_seller_id_fkey"
+            columns: ["seller_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
