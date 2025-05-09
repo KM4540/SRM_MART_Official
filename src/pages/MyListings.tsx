@@ -21,12 +21,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { supabase } from '@/integrations/supabase/client';
 
+// Status filter options
+type StatusFilter = 'available' | 'in_progress' | 'sold' | 'all';
+
 const MyListings = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [userProducts, setUserProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [productToDelete, setProductToDelete] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   useEffect(() => {
     if (!user) {
@@ -72,6 +76,12 @@ const MyListings = () => {
     }
   };
 
+  // Filter products based on status
+  const filteredProducts = userProducts.filter(product => {
+    if (statusFilter === 'all') return true;
+    return product.status === statusFilter;
+  });
+
   if (!user) return null;
 
   if (loading) {
@@ -99,20 +109,56 @@ const MyListings = () => {
           </Link>
         </div>
 
-        {userProducts.length === 0 ? (
+        {/* Status filter buttons */}
+        <div className="flex gap-2 mb-6">
+          <Button 
+            variant={statusFilter === 'all' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('all')}
+          >
+            All
+          </Button>
+          <Button 
+            variant={statusFilter === 'available' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('available')}
+          >
+            Listed
+          </Button>
+          <Button 
+            variant={statusFilter === 'in_progress' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('in_progress')}
+          >
+            In Progress
+          </Button>
+          <Button 
+            variant={statusFilter === 'sold' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('sold')}
+          >
+            Sold
+          </Button>
+        </div>
+
+        {filteredProducts.length === 0 ? (
           <div className="text-center py-16 bg-secondary/30 rounded-lg">
             <Store size={48} className="mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-xl font-semibold mb-2">No Listings Yet</h3>
+            <h3 className="text-xl font-semibold mb-2">
+              {statusFilter === 'all' 
+                ? "No Listings Yet" 
+                : `No ${statusFilter === 'in_progress' ? 'In Progress' : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Items`}
+            </h3>
             <p className="text-muted-foreground">
-              You haven't listed any products for sale yet.
+              {statusFilter === 'all' 
+                ? "You haven't listed any products for sale yet."
+                : `You don't have any ${statusFilter === 'in_progress' ? 'in progress' : statusFilter} items.`}
             </p>
-            <Link to="/sell" className="mt-4 inline-block">
-              <Button>List Your First Product</Button>
-            </Link>
+            {statusFilter === 'all' || statusFilter === 'available' ? (
+              <Link to="/sell" className="mt-4 inline-block">
+                <Button>List Your First Product</Button>
+              </Link>
+            ) : null}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {userProducts.map((product) => (
+            {filteredProducts.map((product) => (
               <div key={product.id} className="relative group">
                 <ProductCard
                   id={product.id}

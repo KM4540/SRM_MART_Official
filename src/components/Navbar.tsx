@@ -27,6 +27,8 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -118,6 +120,17 @@ const Navbar = () => {
     }
   };
 
+  const getConditionColor = (condition: string) => {
+    switch(condition) {
+      case 'New': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
+      case 'Like New': return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
+      case 'Good': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'Used': return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400';
+      case 'Heavily Used': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
+      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-400';
+    }
+  };
+
   return (
     <header className={`sticky top-0 z-50 w-full transition-all duration-300 ${isScrolled ? 'bg-background/80 backdrop-blur-sm border-b' : ''}`}>
       <div className="container mx-auto px-4">
@@ -156,8 +169,13 @@ const Navbar = () => {
                       />
                       <div className="flex-1">
                         <div className="font-medium">{product.title}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {product.category} • ₹{product.price}
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-sm text-muted-foreground">
+                            {product.category} • ₹{product.price}
+                          </span>
+                          <Badge variant="outline" className={cn("text-xs ml-1", getConditionColor(product.condition))}>
+                            {product.condition}
+                          </Badge>
                         </div>
                       </div>
                     </div>
@@ -309,8 +327,13 @@ const Navbar = () => {
                         />
                         <div className="flex-1">
                           <div className="font-medium">{product.title}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {product.category} • ₹{product.price}
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-sm text-muted-foreground">
+                              {product.category} • ₹{product.price}
+                            </span>
+                            <Badge variant="outline" className={cn("text-xs ml-1", getConditionColor(product.condition))}>
+                              {product.condition}
+                            </Badge>
                           </div>
                         </div>
                       </div>
@@ -451,8 +474,13 @@ const Navbar = () => {
                   />
                   <div>
                     <div className="font-medium">{product.title}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {product.category} • ₹{product.price}
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-sm text-muted-foreground">
+                        {product.category} • ₹{product.price}
+                      </span>
+                      <Badge variant="outline" className={cn("text-xs ml-1", getConditionColor(product.condition))}>
+                        {product.condition}
+                      </Badge>
                     </div>
                   </div>
                 </CommandItem>

@@ -46,6 +46,7 @@ interface PickupSchedule {
   transaction_id?: string;
   buyer_pickup_time?: string;
   seller_no_show?: boolean;
+  buyer_no_show?: boolean;
 }
 
 interface AcceptedOffer {
@@ -95,6 +96,8 @@ export default function AdminOfferCoordination() {
   const [currentOffer, setCurrentOffer] = useState<AcceptedOffer | null>(null);
   const [isLoadingQrCode, setIsLoadingQrCode] = useState(false);
   const [showNoShowDialog, setShowNoShowDialog] = useState(false);
+  const [showBuyerNoShowDialog, setShowBuyerNoShowDialog] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'received' | 'completed' | 'cancelled' | 'pending'>('pending');
 
   useEffect(() => {
     checkAdminStatus();
@@ -150,11 +153,11 @@ export default function AdminOfferCoordination() {
     setLoading(true);
     setRefreshing(true);
     try {
-      // First, get all accepted offers
+      // Get both accepted and completed offers for a complete view
       const { data: offers, error: offersError } = await supabase
         .from('price_offers')
         .select('*')
-        .eq('status', 'accepted')
+        .in('status', ['accepted', 'completed']) // Include both statuses
         .order('created_at', { ascending: false });
       
       if (offersError) throw offersError;
@@ -166,7 +169,7 @@ export default function AdminOfferCoordination() {
         return;
       }
 
-      console.log('Found accepted offers:', offers);
+      console.log('Found offers:', offers);
       
       // Get all profiles in one query for better performance
       const { data: allProfiles } = await supabase
@@ -227,8 +230,8 @@ export default function AdminOfferCoordination() {
       console.log('Enhanced offers:', enhancedOffers);
       setAcceptedOffers(enhancedOffers);
     } catch (error) {
-      console.error('Error fetching accepted offers:', error);
-      toast.error('Failed to load accepted offers');
+      console.error('Error fetching offers:', error);
+      toast.error('Failed to load offers');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -252,7 +255,8 @@ export default function AdminOfferCoordination() {
           item_delivered,
           transaction_id,
           buyer_pickup_time,
-          seller_no_show
+          seller_no_show,
+          buyer_no_show
         `)
         .in('offer_id', offerIds);
 
@@ -459,6 +463,21 @@ export default function AdminOfferCoordination() {
     // Potentially close a dialog if one is open for the QR code
   };
 
+  // Helper function to check if a string is a valid UUID
+  const isValidUUID = (str: string) => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
+  };
+
+  // Helper function to generate a UUID
+  const generateUUID = () => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+
   // Submission from the transaction ID dialog
   const handleTransactionSubmit = async () => {
     if (!processingPickupId || !currentTransactionId) {
@@ -466,13 +485,22 @@ export default function AdminOfferCoordination() {
       return;
     }
 
-    setSchedulingLoading(true); // Use schedulingLoading state for general processing indication
+    setSchedulingLoading(true);
     try {
+      // Convert string ID to UUID format before using in query
+      // This is critical because the database expects a UUID
+      let pickupIdAsUUID = processingPickupId;
+      if (!isValidUUID(processingPickupId)) {
+        toast.error("Invalid pickup ID format");
+        setSchedulingLoading(false);
+        return;
+      }
+
       // Fetch the offer_id related to the processingPickupId
       const { data: pickupData, error: pickupError } = await supabase
         .from('pickup_schedules')
         .select('offer_id')
-        .eq('id', processingPickupId)
+        .eq('id', pickupIdAsUUID)
         .single();
 
       if (pickupError || !pickupData) {
@@ -481,27 +509,65 @@ export default function AdminOfferCoordination() {
 
       const offerId = pickupData.offer_id;
 
-      // Update both pickup_schedules and price_offers in a single transaction
-      const { error: transactionError } = await supabase.rpc('update_pickup_and_offer_status', {
-        _pickup_id: processingPickupId,
-        _transaction_id: currentTransactionId,
-        _offer_id: offerId
-      });
+      // Generate a formatted transaction ID that's a mixture of text and numbers
+      // Format: TXN-YYYYMMDD-XXXX (Text-Numbers-Numbers)
+      const today = new Date();
+      const dateStr = today.getFullYear().toString() +
+                      String(today.getMonth() + 1).padStart(2, '0') +
+                      String(today.getDate()).padStart(2, '0');
+      const randomNum = Math.floor(1000 + Math.random() * 9000); // 4-digit random number
+      const formattedTransactionId = `TXN-${dateStr}-${randomNum}`;
 
-      if (transactionError) throw transactionError;
+      // Store both the user-provided transaction ID and our formatted one
+      const transactionData = {
+        user_input: currentTransactionId,
+        system_id: formattedTransactionId,
+        timestamp: new Date().toISOString()
+      };
+
+      // Update pickup schedule with the formatted transaction ID
+      const { error: pickupUpdateError } = await supabase
+        .from('pickup_schedules')
+        .update({ 
+          item_delivered: true, 
+          updated_at: new Date().toISOString(),
+          // Store the formatted transaction ID directly
+          transaction_id: formattedTransactionId,
+          // Also store in metadata for backup
+          metadata: transactionData
+        })
+        .eq('id', pickupIdAsUUID);
+
+      if (pickupUpdateError) throw pickupUpdateError;
+
+      // Update offer status
+      const { error: offerUpdateError } = await supabase
+        .from('price_offers')
+        .update({ 
+          status: 'completed',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', offerId);
+
+      if (offerUpdateError) throw offerUpdateError;
 
       // Update local state for pickup
       const updatedPickups = { ...scheduledPickups };
       const pickup = Object.values(updatedPickups).find(p => p.id === processingPickupId);
       if (pickup) {
         pickup.item_delivered = true;
-        pickup.transaction_id = currentTransactionId; // Store the transaction ID locally
+        // Display the formatted transaction ID
+        pickup.transaction_id = formattedTransactionId;
         setScheduledPickups(updatedPickups);
       }
 
-      // Update local state for offer status to 'completed'
+      // Update local state for offer status to 'completed' instead of removing it
       setAcceptedOffers(prevOffers =>
-        prevOffers.filter(offer => offer.id !== offerId) // Remove the completed offer
+        prevOffers.map(offer => 
+          offer.id === offerId 
+            ? { ...offer, status: 'completed' } 
+            : offer
+        )
       );
       
       setShowTransactionDialog(false);
@@ -517,7 +583,7 @@ export default function AdminOfferCoordination() {
       toast.error(`Failed to mark item as delivered: ${error.message}`);
     } finally {
       setSchedulingLoading(false);
-      setProcessingPickupId(null); // Clear processing indicator
+      setProcessingPickupId(null);
     }
   };
 
@@ -581,17 +647,6 @@ export default function AdminOfferCoordination() {
 
       if (updatePickupError) throw updatePickupError;
 
-      // Update offer status to indicate seller no-show
-      const { error: updateOfferError } = await supabase
-        .from('price_offers')
-        .update({ 
-          status: 'seller_no_show',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', currentOffer.id);
-
-      if (updateOfferError) throw updateOfferError;
-
       // Update local state
       const updatedPickups = { ...scheduledPickups };
       const pickup = Object.values(updatedPickups).find(p => p.id === processingPickupId);
@@ -620,6 +675,112 @@ export default function AdminOfferCoordination() {
       setProcessingPickupId(null);
       setCurrentOffer(null);
     }
+  };
+
+  // Handle buyer no-show
+  const handleBuyerNoShow = (pickupId: string, offer: AcceptedOffer) => {
+    setProcessingPickupId(pickupId);
+    setCurrentOffer(offer);
+    setShowBuyerNoShowDialog(true);
+  };
+
+  // Mark buyer as no-show and cancel the transaction
+  const confirmBuyerNoShow = async () => {
+    if (!processingPickupId || !currentOffer) {
+      toast.error("Missing pickup or offer information");
+      return;
+    }
+
+    setSchedulingLoading(true);
+    try {
+      // Update pickup schedule to mark buyer as no-show
+      const { error: updatePickupError } = await supabase
+        .from('pickup_schedules')
+        .update({ 
+          buyer_no_show: true, 
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', processingPickupId);
+
+      if (updatePickupError) throw updatePickupError;
+
+      // Update local state
+      const updatedPickups = { ...scheduledPickups };
+      const pickup = Object.values(updatedPickups).find(p => p.id === processingPickupId);
+      if (pickup) {
+        pickup.buyer_no_show = true;
+        setScheduledPickups(updatedPickups);
+      }
+
+      // Remove this offer from the accepted offers list
+      setAcceptedOffers(prevOffers =>
+        prevOffers.filter(offer => offer.id !== currentOffer.id)
+      );
+
+      toast.success("Marked buyer as no-show. The transaction has been canceled.");
+      setShowBuyerNoShowDialog(false);
+
+      // Refresh data
+      await fetchExistingPickups();
+      await fetchAcceptedOffers();
+
+    } catch (error: any) {
+      console.error('Error marking buyer as no-show:', error);
+      toast.error(`Failed to mark buyer as no-show: ${error.message}`);
+    } finally {
+      setSchedulingLoading(false);
+      setProcessingPickupId(null);
+      setCurrentOffer(null);
+    }
+  };
+
+  // Add filteredOffers function to filter offers based on status
+  const getFilteredOffers = () => {
+    return acceptedOffers.filter(offer => {
+      const pickup = scheduledPickups[offer.id];
+      
+      switch (statusFilter) {
+        case 'received':
+          return pickup && pickup.item_received && !pickup.item_delivered && !pickup.buyer_no_show;
+        case 'completed':
+          // Check both the offer status and pickup delivery status
+          return offer.status === 'completed' || (pickup && pickup.item_delivered);
+        case 'cancelled':
+          return pickup && (pickup.seller_no_show || pickup.buyer_no_show);
+        case 'pending':
+          // Only show pending offers (not completed, not cancelled)
+          return (offer.status === 'accepted') && 
+                 (!pickup || (pickup && !pickup.item_received && !pickup.seller_no_show));
+        case 'all':
+          // Show all except cancelled
+          return (offer.status === 'accepted' || offer.status === 'completed') && 
+                 (!pickup || !(pickup.seller_no_show || pickup.buyer_no_show));
+        default:
+          return true;
+      }
+    });
+  };
+
+  // Add helper functions to count items in each category
+  const countOffersByStatus = (status: 'all' | 'received' | 'completed' | 'cancelled' | 'pending') => {
+    return acceptedOffers.filter(offer => {
+      const pickup = scheduledPickups[offer.id];
+      
+      switch (status) {
+        case 'received':
+          return pickup && pickup.item_received && !pickup.item_delivered && !pickup.buyer_no_show;
+        case 'completed':
+          return pickup && pickup.item_delivered;
+        case 'cancelled':
+          return pickup && (pickup.seller_no_show || pickup.buyer_no_show);
+        case 'pending':
+          return !pickup || (pickup && !pickup.item_received && !pickup.seller_no_show);
+        case 'all':
+          return !pickup || !(pickup.seller_no_show || pickup.buyer_no_show);
+        default:
+          return true;
+      }
+    }).length;
   };
 
   // Render logic
@@ -654,11 +815,59 @@ export default function AdminOfferCoordination() {
           </Button>
         </div>
 
-        {acceptedOffers.length === 0 && !loading ? (
-          <p className="text-center text-muted-foreground mt-10">No accepted offers require coordination.</p>
+        {/* Add filter buttons */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          <Button 
+            variant={statusFilter === 'all' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('all')}
+            className="text-xs md:text-sm"
+          >
+            All Active
+            <Badge variant="secondary" className="ml-2 bg-primary-foreground text-primary">{countOffersByStatus('all')}</Badge>
+          </Button>
+          <Button 
+            variant={statusFilter === 'pending' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('pending')}
+            className="text-xs md:text-sm"
+          >
+            Pending Review
+            <Badge variant="secondary" className="ml-2 bg-primary-foreground text-primary">{countOffersByStatus('pending')}</Badge>
+          </Button>
+          <Button 
+            variant={statusFilter === 'received' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('received')}
+            className="text-xs md:text-sm"
+          >
+            Item Received
+            <Badge variant="secondary" className="ml-2 bg-primary-foreground text-primary">{countOffersByStatus('received')}</Badge>
+          </Button>
+          <Button 
+            variant={statusFilter === 'completed' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('completed')}
+            className="text-xs md:text-sm"
+          >
+            Completed
+            <Badge variant="secondary" className="ml-2 bg-primary-foreground text-primary">{countOffersByStatus('completed')}</Badge>
+          </Button>
+          <Button 
+            variant={statusFilter === 'cancelled' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('cancelled')}
+            className="text-xs md:text-sm"
+          >
+            Cancelled
+            <Badge variant="secondary" className="ml-2 bg-primary-foreground text-primary">{countOffersByStatus('cancelled')}</Badge>
+          </Button>
+        </div>
+
+        {getFilteredOffers().length === 0 && !loading ? (
+          <p className="text-center text-muted-foreground mt-10">
+            {acceptedOffers.length > 0 
+              ? `No transactions match the "${statusFilter}" filter.` 
+              : "No accepted offers require coordination."}
+          </p>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {acceptedOffers.map((offer) => {
+            {getFilteredOffers().map((offer) => {
               const pickup = scheduledPickups[offer.id];
               const isProcessing = processingPickupId === pickup?.id;
 
@@ -699,6 +908,18 @@ export default function AdminOfferCoordination() {
                               Seller No-Show
                             </Badge>
                           )}
+                          {pickup.item_received && !pickup.item_delivered && !pickup.buyer_no_show && (
+                            <Button
+                              onClick={() => handleBuyerNoShow(pickup.id, offer)}
+                              variant="destructive"
+                              size="sm"
+                              className="col-span-2 mt-2"
+                              disabled={isProcessing}
+                            >
+                              {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <AlertCircle size={16} className="mr-2" />}
+                              Buyer Didn't Show
+                            </Button>
+                          )}
                         </div>
                         {pickup.transaction_id && (
                           <p className="text-xs mt-2 text-muted-foreground">Transaction ID: {pickup.transaction_id}</p>
@@ -733,6 +954,18 @@ export default function AdminOfferCoordination() {
                            {isProcessing && pickup.item_received && !pickup.item_delivered ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle size={16} className="mr-2" />}
                           Item Given
                         </Button>
+                        {pickup.item_received && !pickup.item_delivered && !pickup.buyer_no_show && (
+                          <Button
+                            onClick={() => handleBuyerNoShow(pickup.id, offer)}
+                            variant="destructive"
+                            size="sm"
+                            className="col-span-2 mt-2"
+                            disabled={isProcessing}
+                          >
+                            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <AlertCircle size={16} className="mr-2" />}
+                            Buyer Didn't Show
+                          </Button>
+                        )}
                         {!pickup.item_received && !pickup.seller_no_show && (
                           <Button
                             onClick={() => handleSellerNoShow(pickup.id, offer)}
@@ -745,7 +978,7 @@ export default function AdminOfferCoordination() {
                             Seller Didn't Show
                           </Button>
                         )}
-                        {offer.seller?.payment_qr_url && !pickup.seller_no_show && (
+                        {offer.seller?.payment_qr_url && !pickup.seller_no_show && !pickup.item_delivered && (
                            <Button
                              onClick={() => handleShowQrCode(offer)}
                              variant="secondary"
@@ -1062,6 +1295,38 @@ export default function AdminOfferCoordination() {
             <Button variant="destructive" onClick={confirmSellerNoShow} disabled={schedulingLoading}>
               {schedulingLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Confirm Seller No-Show
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Buyer No-Show Dialog */}
+      <Dialog open={showBuyerNoShowDialog} onOpenChange={(open) => { if (!open) { setProcessingPickupId(null); setCurrentOffer(null); } setShowBuyerNoShowDialog(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Buyer No-Show</DialogTitle>
+            <DialogDescription>
+              This will mark the buyer as a no-show. The transaction will be canceled.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="rounded-md bg-amber-50 p-4 border border-amber-100">
+              <div className="flex items-start">
+                <AlertCircle className="h-5 w-5 text-amber-600 mr-2 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-amber-800">Confirmation Required</h3>
+                  <p className="text-sm text-amber-700 mt-1">
+                    Are you sure the buyer didn't show up for the scheduled pickup? This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBuyerNoShowDialog(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmBuyerNoShow} disabled={schedulingLoading}>
+              {schedulingLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Confirm Buyer No-Show
             </Button>
           </DialogFooter>
         </DialogContent>

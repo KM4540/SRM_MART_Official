@@ -255,15 +255,16 @@ const ProductCard: React.FC<ProductCardProps> = ({
             onClick={toggleFavorite}
             disabled={status === 'sold'}
           >
-            <Heart size={18} fill={isFavorite ? "currentColor" : "none"} />
+            <Heart size={16} fill={isFavorite ? "currentColor" : "none"} />
           </Button>
           
           <img
-            src={image}
+            src={image || '/placeholder-image.jpg'}
             alt={title}
+            loading="lazy"
             className={cn(
-              "w-full h-full object-cover transition-transform duration-300 group-hover:scale-105",
-              !isImageLoaded ? "blur-sm" : "",
+              "w-full h-full object-contain p-4 transition-opacity",
+              isImageLoaded ? "opacity-100" : "opacity-0",
               status === 'sold' ? 'grayscale' : ''
             )}
             onLoad={() => setIsImageLoaded(true)}

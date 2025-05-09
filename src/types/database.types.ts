@@ -24,6 +24,8 @@ export interface Database {
           created_at: string
           updated_at: string
           buyer_pickup_time: string | null
+          seller_no_show: boolean
+          buyer_no_show: boolean
         }
         Insert: {
           id?: string
@@ -36,6 +38,8 @@ export interface Database {
           created_at?: string
           updated_at?: string
           buyer_pickup_time?: string | null
+          seller_no_show?: boolean
+          buyer_no_show?: boolean
         }
         Update: {
           id?: string
@@ -48,6 +52,8 @@ export interface Database {
           created_at?: string
           updated_at?: string
           buyer_pickup_time?: string | null
+          seller_no_show?: boolean
+          buyer_no_show?: boolean
         }
         Relationships: [
           {

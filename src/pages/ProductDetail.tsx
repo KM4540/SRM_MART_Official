@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Minus, Plus, Share, Heart, ShoppingCart, Trash2 } from 'lucide-react';
+import { ArrowLeft, Minus, Plus, Share, Heart, ShoppingCart, Trash2, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -252,7 +252,7 @@ const ProductDetail = () => {
             Back
           </Button>
           
-          {user && user.id === product.seller_id.id && (
+          {isOwner && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" size="sm" className="flex items-center">
@@ -284,12 +284,18 @@ const ProductDetail = () => {
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Product Image */}
-          <div className="relative aspect-square rounded-lg overflow-hidden bg-muted">
-            <img
-              src={product.image}
-              alt={product.title}
-              className="object-cover w-full h-full"
-            />
+          <div className="aspect-square rounded-lg overflow-hidden bg-secondary/20 relative">
+            {product.image ? (
+              <img
+                src={product.image}
+                alt={product.title}
+                className="w-full h-full object-contain p-4"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-muted-foreground bg-secondary/30">
+                No image available
+              </div>
+            )}
             <Button
               size="icon"
               variant="ghost"
@@ -332,6 +338,40 @@ const ProductDetail = () => {
                   <p className="text-red-800 dark:text-red-400 font-medium">
                     This product has already been sold
                   </p>
+                </div>
+              ) : isOwner ? (
+                <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-center">
+                  <p className="text-blue-800 dark:text-blue-400 font-medium">
+                    You are the owner of this product
+                  </p>
+                  <div className="mt-4 flex flex-col sm:flex-row gap-3">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => navigate('/my-listings')}
+                    >
+                      <Store className="mr-2 h-4 w-4" />
+                      Manage Listings
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="hidden sm:flex"
+                      onClick={() => {
+                        navigator.share({
+                          title: product.title,
+                          text: product.description,
+                          url: window.location.href
+                        }).catch(() => {
+                          navigator.clipboard.writeText(window.location.href);
+                          toast.success('Link copied to clipboard');
+                        });
+                      }}
+                    >
+                      <Share className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col sm:flex-row gap-3">
@@ -396,7 +436,7 @@ const ProductDetail = () => {
               </div>
               
               {/* Make Offer Form - Only show for non-owners */}
-              {user && user.id !== product.seller_id.id && product.status !== 'sold' && (
+              {user && !isOwner && product.status !== 'sold' && (
                 <div className="mt-4">
                   <BuyButton 
                     product={{

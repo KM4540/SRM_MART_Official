@@ -25,6 +25,7 @@ import {
   RefreshCw,
   MapPin,
   Info,
+  AlertCircle,
 } from 'lucide-react';
 import AnimatedLayout from '@/components/AnimatedLayout';
 import Navbar from '@/components/Navbar';
@@ -74,6 +75,8 @@ interface PickupSchedule {
   buyer_pickup_time?: string;
   item_received?: boolean;
   item_delivered?: boolean;
+  seller_no_show?: boolean;
+  buyer_no_show?: boolean;
   transaction_id?: string;
   location?: {
     id: string;
@@ -87,6 +90,9 @@ interface PickupSchedule {
   };
 }
 
+// Status filter options
+type StatusFilter = 'all' | 'pending' | 'accepted' | 'rejected' | 'countered' | 'completed';
+
 const MyOffers = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -99,6 +105,7 @@ const MyOffers = () => {
   const [respondLoading, setRespondLoading] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [pickupLocations, setPickupLocations] = useState<{[key: string]: {name: string, address: string}}>({});
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
   useEffect(() => {
     if (user) {
@@ -198,12 +205,22 @@ const MyOffers = () => {
             // Process each schedule
             schedulesData.forEach(schedule => {
               pickupSchedules[schedule.offer_id] = {
-                ...schedule,
-                location: schedule.pickup_locations
+                id: schedule.id,
+                pickup_location_id: schedule.pickup_location_id,
+                pickup_time: schedule.pickup_time,
+                buyer_pickup_time: schedule.buyer_pickup_time,
+                item_received: schedule.item_received,
+                item_delivered: schedule.item_delivered,
+                transaction_id: schedule.transaction_id,
+                seller_no_show: schedule.seller_no_show,
+                buyer_no_show: schedule.buyer_no_show,
+                pickup_locations: schedule.pickup_locations
               };
             });
             
             console.log('Pickup schedules with locations:', pickupSchedules);
+          } else {
+            console.error('Error fetching pickup schedules:', schedulesError);
           }
         } catch (error) {
           console.error('Error fetching pickup schedules:', error);
@@ -343,7 +360,24 @@ const MyOffers = () => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, pickup?: PickupSchedule) => {
+    // Check for no-show statuses in the pickup schedule
+    if (pickup?.seller_no_show) {
+      return (
+        <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 flex items-center gap-1">
+          <AlertCircle size={12} /> Seller No-Show
+        </Badge>
+      );
+    }
+    
+    if (pickup?.buyer_no_show) {
+      return (
+        <Badge variant="outline" className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 flex items-center gap-1">
+          <AlertCircle size={12} /> Buyer No-Show
+        </Badge>
+      );
+    }
+    
     switch (status) {
       case 'pending':
         return (
@@ -403,407 +437,420 @@ const MyOffers = () => {
     return formatDate(timeToUse);
   };
 
+  // Filter offers based on status
+  const filteredOffers = offers.filter(offer => {
+    if (statusFilter === 'all') return true;
+    return offer.status === statusFilter;
+  });
+
+  if (loading) {
+    return (
+      <AnimatedLayout>
+        <Navbar />
+        <main className="container py-12 px-4 md:px-6 min-h-screen">
+          <div className="flex justify-center items-center min-h-[400px]">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        </main>
+        <Footer />
+      </AnimatedLayout>
+    );
+  }
+
   return (
     <AnimatedLayout>
       <Navbar />
       <main className="container py-12 px-4 md:px-6 min-h-screen">
-        <div className="mb-8 flex justify-between items-center">
-          <div>
-          <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
-            <DollarSign className="text-primary" /> My Purchases
-          </h1>
-          <p className="text-muted-foreground">
-              Track and manage your purchases and sales
-            </p>
-          </div>
-          <Button 
-            variant="outline" 
-            onClick={() => {
-              toast.info('Refreshing purchase history...');
-              fetchMyOffers(true);
-            }}
-            className="flex items-center gap-2"
-          >
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">My Offers</h1>
+          <Button onClick={refreshOffers} size="sm" variant="outline">
+            <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
           </Button>
         </div>
-        
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+
+        {/* Status filter buttons */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          <Button 
+            variant={statusFilter === 'all' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('all')}
+            size="sm"
+          >
+            All
+          </Button>
+          <Button 
+            variant={statusFilter === 'pending' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('pending')}
+            size="sm"
+          >
+            Pending
+          </Button>
+          <Button 
+            variant={statusFilter === 'completed' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('completed')}
+            size="sm"
+          >
+            Completed
+          </Button>
+          <Button 
+            variant={statusFilter === 'rejected' ? "default" : "outline"} 
+            onClick={() => setStatusFilter('rejected')}
+            size="sm"
+          >
+            Rejected
+          </Button>
+        </div>
+
+        {filteredOffers.length === 0 ? (
+          <div className="text-center py-16 bg-secondary/30 rounded-lg mb-8">
+            <ShoppingCart size={48} className="mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-xl font-semibold mb-2">
+              {statusFilter === 'all' 
+                ? "No Offers Yet" 
+                : `No ${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Offers`}
+            </h3>
+            <p className="text-muted-foreground">
+              {statusFilter === 'all' 
+                ? "You haven't made or received any offers yet."
+                : `You don't have any ${statusFilter} offers.`}
+            </p>
           </div>
         ) : (
-          <div className="space-y-8">
-            {/* Received Offers Section */}
-            <div>
-              <h2 className="text-2xl font-semibold mb-4">My Sales</h2>
-              
-              {/* Service Charge Notice - only show for sellers who have made sales */}
-              {receivedOffers.length > 0 && (
-                <Alert className="mb-4 bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800">
-                  <Info className="h-4 w-4 mr-2" />
-                  <AlertDescription>
-                    A 2% service charge applies to all successful sales, which will be deducted when you receive payment from buyers.
-                  </AlertDescription>
-                </Alert>
-              )}
-              
-              {receivedOffers.length === 0 ? (
-                <div className="text-center py-8 bg-secondary/30 rounded-lg">
-                  <DollarSign size={48} className="mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-xl font-semibold mb-2">No Sales Yet</h3>
-                  <p className="text-muted-foreground mb-6">
-                    You haven't sold any products yet
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {receivedOffers.map(offer => (
-                    <Card key={offer.id} className="overflow-hidden">
-                      <CardHeader className="pb-2">
-                        <div className="flex justify-between items-start">
-                          <div className="w-3/4">
-                            <CardTitle className="line-clamp-1 text-lg">
-                              {offer.product?.title || 'Unknown Product'}
-                            </CardTitle>
-                            <p className="text-sm text-muted-foreground">
-                              Sold {formatDate(offer.created_at)}
-                            </p>
-                          </div>
-                          {getStatusBadge(offer.status)}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="grid gap-4">
-                        <div className="flex justify-between">
-                          <div>
-                            <span className="text-sm text-muted-foreground">Your Price:</span>
-                            <p className="font-medium">₹{offer.product?.price}</p>
-                          </div>
-                          <div>
-                            <span className="text-sm text-muted-foreground">Offered Price:</span>
-                            <p className="font-semibold">₹{offer.offered_price}</p>
-                          </div>
-                        </div>
-                        
-                        {offer.seller_message && (
-                          <div className="bg-muted p-3 rounded-md">
-                            <p className="text-sm text-muted-foreground">Seller's message:</p>
-                            <p className="text-sm">{offer.seller_message}</p>
-                          </div>
-                        )}
-                        
-                        {/* Show pickup details for accepted offers */}
-                        {offer.status === 'accepted' && offer.pickup_schedule && (
-                          <div className="bg-blue-50 p-3 rounded-md border border-blue-100">
-                            <h4 className="text-sm font-semibold text-blue-700 flex items-center gap-2 mb-2">
-                              <MapPin className="h-4 w-4" /> Pickup Details
-                            </h4>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Location:</span>
-                                <span className="font-medium">
-                                  {(offer.pickup_schedule.location?.name || 
-                                   offer.pickup_schedule.pickup_locations?.name) || 'Location not set'}
-                                </span>
-                              </div>
-                              {(offer.pickup_schedule.location?.address || 
-                                offer.pickup_schedule.pickup_locations?.address) && (
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Address:</span>
-                                  <span className="font-medium">
-                                    {offer.pickup_schedule.location?.address || 
-                                     offer.pickup_schedule.pickup_locations?.address}
-                                  </span>
-                                </div>
-                              )}
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Pickup Time:</span>
-                                <span className="font-medium">
-                                  {formatPickupTimeForRole(offer.pickup_schedule, true)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
-                        {offer.status === 'accepted' && !offer.pickup_schedule && (
-                          <div className="bg-yellow-50 p-3 rounded-md border border-yellow-100">
-                            <h4 className="text-sm font-semibold text-yellow-700 flex items-center gap-2">
-                              <Clock className="h-4 w-4" /> Awaiting Pickup Schedule
-                            </h4>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              The admin will schedule a pickup time soon.
-                            </p>
-                          </div>
-                        )}
-
-                        {offer.status === 'completed' && (
-                          <div className="bg-purple-50 p-3 rounded-md border border-purple-100">
-                            <h4 className="text-sm font-semibold text-purple-700 flex items-center gap-2">
-                              <CheckCircle className="h-4 w-4" /> Trade Completed
-                            </h4>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              This transaction has been successfully completed. 
-                              {offer.pickup_schedule?.transaction_id && (
-                                <span className="block mt-1">
-                                  Transaction ID: <span className="font-medium">{offer.pickup_schedule.transaction_id}</span>
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                        )}
-                      </CardContent>
-                      {offer.status === 'pending' && (
-                        <CardFooter>
-                          <Button 
-                            onClick={() => handleRespond(offer)}
-                            className="w-full"
-                          >
-                            Update Purchase Status
-                          </Button>
-                        </CardFooter>
-                      )}
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Sent Offers Section */}
-            <div>
-              <h2 className="text-2xl font-semibold mb-4">My Purchases</h2>
-              {sentOffers.length === 0 ? (
-                <div className="text-center py-8 bg-secondary/30 rounded-lg">
-                <DollarSign size={48} className="mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-xl font-semibold mb-2">No Purchase History</h3>
-                <p className="text-muted-foreground mb-6">
-                  You haven't purchased any products yet
-                </p>
-                <Button onClick={() => navigate('/listings')}>
-                  <ShoppingCart size={16} className="mr-2" /> Browse Products
-                </Button>
-              </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {sentOffers.map(offer => (
-                  <Card key={offer.id} className="overflow-hidden">
-                      <CardHeader className="pb-2">
-                        <div className="flex justify-between items-start">
-                          <div className="w-3/4">
-                            <CardTitle className="line-clamp-1 text-lg">
-                              {offer.product?.title || 'Unknown Product'}
-                            </CardTitle>
-                            <p className="text-sm text-muted-foreground">
-                              Purchased {formatDate(offer.created_at)}
-                            </p>
-                          </div>
-                          {getStatusBadge(offer.status)}
-                        </div>
-                    </CardHeader>
-                      <CardContent className="grid gap-4">
-                        <div className="flex justify-between">
-                        <div>
-                            <span className="text-sm text-muted-foreground">Listing Price:</span>
-                          <p className="font-medium">₹{offer.product?.price}</p>
-                        </div>
-                        <div>
-                            <span className="text-sm text-muted-foreground">Your Offered Price:</span>
-                          <p className="font-semibold">₹{offer.offered_price}</p>
-                        </div>
-                      </div>
-                      
-                        {/* Status-specific content */}
-                      {offer.status === 'countered' && (
-                          <div className="bg-blue-50 p-3 rounded-md">
-                            <p className="text-sm text-muted-foreground">Seller counter-offered:</p>
-                            <p className="font-medium">₹{offer.seller_counter_price}</p>
-                          {offer.seller_message && (
-                            <div className="mt-2">
-                                <p className="text-xs text-muted-foreground">Seller's message:</p>
-                              <p className="text-sm">{offer.seller_message}</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      
-                        {/* Show pickup details for accepted offers */}
-                        {offer.status === 'accepted' && offer.pickup_schedule && (
-                          <div className="bg-blue-50 p-3 rounded-md border border-blue-100">
-                            <h4 className="text-sm font-semibold text-blue-700 flex items-center gap-2 mb-2">
-                              <MapPin className="h-4 w-4" /> Pickup Details
-                            </h4>
-                            <div className="space-y-2 text-sm">
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Location:</span>
-                                <span className="font-medium">
-                                  {(offer.pickup_schedule.location?.name || 
-                                   offer.pickup_schedule.pickup_locations?.name) || 'Location not set'}
-                                </span>
-                              </div>
-                              {(offer.pickup_schedule.location?.address || 
-                                offer.pickup_schedule.pickup_locations?.address) && (
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Address:</span>
-                                  <span className="font-medium">
-                                    {offer.pickup_schedule.location?.address || 
-                                     offer.pickup_schedule.pickup_locations?.address}
-                                  </span>
-                                </div>
-                              )}
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Pickup Time:</span>
-                                <span className="font-medium">
-                                  {formatPickupTimeForRole(offer.pickup_schedule, false)}
-                                </span>
-                              </div>
-                            </div>
-                        </div>
-                      )}
-                      
-                        {offer.status === 'accepted' && !offer.pickup_schedule && (
-                          <div className="bg-yellow-50 p-3 rounded-md border border-yellow-100">
-                            <h4 className="text-sm font-semibold text-yellow-700 flex items-center gap-2">
-                              <Clock className="h-4 w-4" /> Awaiting Pickup Schedule
-                            </h4>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              The admin will schedule a pickup time soon.
-                            </p>
-                          </div>
-                        )}
-                        
-                        {offer.buyer_message && (
-                          <div className="bg-muted p-3 rounded-md">
-                            <p className="text-sm text-muted-foreground">Your message:</p>
-                            <p className="text-sm">{offer.buyer_message}</p>
-                          </div>
-                        )}
-
-                        {offer.status === 'completed' && (
-                          <div className="bg-purple-50 p-3 rounded-md border border-purple-100">
-                            <h4 className="text-sm font-semibold text-purple-700 flex items-center gap-2">
-                              <CheckCircle className="h-4 w-4" /> Trade Completed
-                            </h4>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              This transaction has been successfully completed.
-                              {offer.pickup_schedule?.transaction_id && (
-                                <span className="block mt-1">
-                                  Transaction ID: <span className="font-medium">{offer.pickup_schedule.transaction_id}</span>
-                                </span>
-                              )}
-                            </p>
-                        </div>
-                      )}
-                    </CardContent>
-                    {offer.status === 'countered' && (
-                      <CardFooter>
-                        <Button 
-                            onClick={() => handleRespond(offer)}
-                          className="w-full"
-                          >
-                            Update Purchase Status
-                        </Button>
-                      </CardFooter>
-                    )}
-                  </Card>
-                ))}
-              </div>
-            )}
-            </div>
-
-            {/* Respond to Offer Dialog */}
-            <Dialog open={showRespondDialog} onOpenChange={setShowRespondDialog}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Confirm Purchase Status</DialogTitle>
-                  <DialogDescription>
-                    Update the status for {selectedOffer?.product?.title}
-                  </DialogDescription>
-                </DialogHeader>
-                
-                <div className="space-y-4 py-4">
-                  <div className="flex justify-between items-center">
+          <div className="grid grid-cols-1 gap-4 mb-8">
+            {filteredOffers.map((offer) => (
+              <Card key={offer.id} className="overflow-hidden">
+                <CardHeader className="pb-2">
+                  <div className="flex justify-between items-start">
+                    <div className="w-3/4">
+                      <CardTitle className="line-clamp-1 text-lg">
+                        {offer.product?.title || 'Unknown Product'}
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        {offer.status === 'accepted' || offer.status === 'completed' ? `Sold ${formatDate(offer.created_at)}` : `Purchased ${formatDate(offer.created_at)}`}
+                      </p>
+                    </div>
+                    {getStatusBadge(offer.status, offer.pickup_schedule)}
+                  </div>
+                </CardHeader>
+                <CardContent className="grid gap-4">
+                  <div className="flex justify-between">
                     <div>
                       <span className="text-sm text-muted-foreground">Your Price:</span>
-                      <p className="font-medium">₹{selectedOffer?.product?.price}</p>
+                      <p className="font-medium">₹{offer.product?.price}</p>
                     </div>
                     <div>
                       <span className="text-sm text-muted-foreground">Offered Price:</span>
-                      <p className="font-semibold">₹{selectedOffer?.offered_price}</p>
+                      <p className="font-semibold">₹{offer.offered_price}</p>
                     </div>
                   </div>
                   
-                  {selectedOffer?.buyer_message && (
-                    <div className="mt-2 bg-muted p-3 rounded-md">
-                      <p className="text-sm text-muted-foreground">Buyer's message:</p>
-                      <p className="text-sm">{selectedOffer?.buyer_message}</p>
+                  {offer.seller_message && (
+                    <div className="bg-muted p-3 rounded-md">
+                      <p className="text-sm text-muted-foreground">Seller's message:</p>
+                      <p className="text-sm">{offer.seller_message}</p>
                     </div>
                   )}
                   
-                  <div>
-                    <label htmlFor="counterPrice" className="text-sm font-medium block mb-2">
-                      Counter Offer Price (Optional)
-                    </label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        id="counterPrice"
-                        type="number"
-                        className="pl-10"
-                        value={counterPrice}
-                        onChange={(e) => setCounterPrice(parseFloat(e.target.value) || 0)}
-                        placeholder="Enter your counter offer"
-                      />
+                  {/* Show pickup details for accepted offers */}
+                  {offer.status === 'accepted' && offer.pickup_schedule && !offer.pickup_schedule.seller_no_show && !offer.pickup_schedule.buyer_no_show && (
+                    <div className="bg-blue-50 p-3 rounded-md border border-blue-100">
+                      <h4 className="text-sm font-semibold text-blue-700 flex items-center gap-2 mb-2">
+                        <MapPin className="h-4 w-4" /> Pickup Details
+                      </h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Location:</span>
+                          <span className="font-medium">
+                            {(offer.pickup_schedule.location?.name || 
+                             offer.pickup_schedule.pickup_locations?.name) || 'Location not set'}
+                          </span>
+                        </div>
+                        {(offer.pickup_schedule.location?.address || 
+                          offer.pickup_schedule.pickup_locations?.address) && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Address:</span>
+                            <span className="font-medium">
+                              {offer.pickup_schedule.location?.address || 
+                               offer.pickup_schedule.pickup_locations?.address}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Pickup Time:</span>
+                          <span className="font-medium">
+                            {formatPickupTimeForRole(offer.pickup_schedule, false)}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Leave unchanged to accept the buyer's price
-                    </p>
-                  </div>
+                  )}
                   
-                  <div>
-                    <label htmlFor="responseMessage" className="text-sm font-medium block mb-2">
-                      Message (Optional)
-                    </label>
-                    <Textarea
-                      id="responseMessage"
-                      value={responseMessage}
-                      onChange={(e) => setResponseMessage(e.target.value)}
-                      placeholder="Add a message to the buyer..."
-                      rows={3}
-                    />
-                  </div>
-                </div>
-                
-                <DialogFooter className="flex flex-col sm:flex-row gap-2">
-                  <Button 
-                    variant="destructive" 
-                    onClick={handleReject}
-                    disabled={respondLoading}
-                    className="flex-1"
-                  >
-                    <XCircle size={16} className="mr-2" /> Reject
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={handleCounter}
-                    disabled={respondLoading || counterPrice <= 0}
-                    className="flex-1"
-                  >
-                    <MessageSquare size={16} className="mr-2" /> Counter
-                  </Button>
-                  <Button 
-                    variant="default" 
-                    onClick={handleAccept}
-                    disabled={respondLoading}
-                    className="flex-1"
-                  >
-                    <CheckCircle2 size={16} className="mr-2" /> Accept
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+                  {offer.status === 'accepted' && !offer.pickup_schedule && (
+                    <div className="bg-yellow-50 p-3 rounded-md border border-yellow-100">
+                      <h4 className="text-sm font-semibold text-yellow-700 flex items-center gap-2">
+                        <Clock className="h-4 w-4" /> Awaiting Pickup Schedule
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        The admin will schedule a pickup time soon.
+                      </p>
+                    </div>
+                  )}
+
+                  {offer.status === 'completed' && (
+                    <div className="bg-purple-50 p-3 rounded-md border border-purple-100">
+                      <h4 className="text-sm font-semibold text-purple-700 flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4" /> Trade Completed
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        This transaction has been successfully completed. 
+                        {offer.pickup_schedule?.transaction_id && (
+                          <span className="block mt-1">
+                            Transaction ID: <span className="font-medium">{offer.pickup_schedule.transaction_id}</span>
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Display seller no-show status for buyers to see */}
+                  {offer.pickup_schedule?.seller_no_show && offer.buyer_id === user?.id && (
+                    <div className="bg-red-50 p-3 rounded-md border border-red-100">
+                      <h4 className="text-sm font-semibold text-red-700 flex items-center gap-2 mb-2">
+                        <AlertCircle className="h-4 w-4" /> Transaction Canceled
+                      </h4>
+                      <p className="text-sm text-red-700">
+                        The seller did not show up for the scheduled drop-off. This transaction has been canceled.
+                      </p>
+                      <div className="mt-2 text-xs text-red-600">
+                        <div className="flex items-center">
+                          <MapPin size={12} className="mr-1" />
+                          <span>
+                            {(offer.pickup_schedule.location?.name || 
+                              offer.pickup_schedule.pickup_locations?.name) || 'Unknown location'}
+                          </span>
+                        </div>
+                        <div className="flex items-center mt-1">
+                          <Clock size={12} className="mr-1" />
+                          <span>
+                            Scheduled: {formatPickupTimeForRole(offer.pickup_schedule, true)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Display buyer no-show status for sellers to see */}
+                  {offer.pickup_schedule?.buyer_no_show && offer.seller_id === user?.id && (
+                    <div className="bg-orange-50 p-3 rounded-md border border-orange-100">
+                      <h4 className="text-sm font-semibold text-orange-700 flex items-center gap-2 mb-2">
+                        <AlertCircle className="h-4 w-4" /> Transaction Canceled
+                      </h4>
+                      <p className="text-sm text-orange-700">
+                        You were marked as no-show for your scheduled pickup. This transaction has been canceled.
+                      </p>
+                      <div className="mt-2 text-xs text-orange-600">
+                        <div className="flex items-center">
+                          <MapPin size={12} className="mr-1" />
+                          <span>
+                            {(offer.pickup_schedule.location?.name || 
+                              offer.pickup_schedule.pickup_locations?.name) || 'Unknown location'}
+                          </span>
+                        </div>
+                        <div className="flex items-center mt-1">
+                          <Clock size={12} className="mr-1" />
+                          <span>
+                            Scheduled: {formatPickupTimeForRole(offer.pickup_schedule, true)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+                {offer.status === 'pending' && (
+                  <CardFooter>
+                    <Button 
+                      onClick={() => handleRespond(offer)}
+                      className="w-full"
+                    >
+                      Update Purchase Status
+                    </Button>
+                  </CardFooter>
+                )}
+              </Card>
+            ))}
           </div>
         )}
+
+        {/* No-show Notifications */}
+        {offers.filter(offer => 
+          (offer.pickup_schedule?.buyer_no_show && offer.buyer_id === user?.id) || 
+          (offer.pickup_schedule?.seller_no_show && offer.seller_id === user?.id) ||
+          (offer.pickup_schedule?.seller_no_show && offer.buyer_id === user?.id) ||
+          (offer.pickup_schedule?.buyer_no_show && offer.seller_id === user?.id)
+        ).length > 0 && (
+          <Alert className="mb-6 border-amber-200 bg-amber-50 text-amber-800">
+            <AlertDescription className="flex flex-col gap-3">
+              <h3 className="font-semibold text-lg">Attention Required</h3>
+              <div className="space-y-3">
+                {/* Buyer being notified they missed pickup */}
+                {offers.filter(offer => offer.pickup_schedule?.buyer_no_show && offer.buyer_id === user?.id).map(offer => (
+                  <div key={`buyer-no-show-${offer.id}`} className="p-3 bg-white rounded-md border border-amber-200">
+                    <p className="font-medium">{offer.product?.title}</p>
+                    <p className="text-sm mt-1">You were marked as no-show for your scheduled pickup. Please contact the coordinator to arrange a new pickup time.</p>
+                    <div className="mt-2 text-xs flex items-center">
+                      <MapPin size={12} className="mr-1" />
+                      {offer.pickup_schedule?.location?.name || offer.pickup_schedule?.pickup_locations?.name || 'Unknown location'}
+                    </div>
+                    <div className="mt-1 text-xs flex items-center">
+                      <Clock size={12} className="mr-1" />
+                      {formatPickupTimeForRole(offer.pickup_schedule!, true)}
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Seller being notified they missed drop-off */}
+                {offers.filter(offer => offer.pickup_schedule?.seller_no_show && offer.seller_id === user?.id).map(offer => (
+                  <div key={`seller-no-show-${offer.id}`} className="p-3 bg-white rounded-md border border-amber-200">
+                    <p className="font-medium">{offer.product?.title}</p>
+                    <p className="text-sm mt-1">You were marked as no-show for your scheduled drop-off. Please contact the coordinator to arrange the pickup of your item.</p>
+                    <div className="mt-2 text-xs flex items-center">
+                      <MapPin size={12} className="mr-1" />
+                      {offer.pickup_schedule?.location?.name || offer.pickup_schedule?.pickup_locations?.name || 'Unknown location'}
+                    </div>
+                    <div className="mt-1 text-xs flex items-center">
+                      <Clock size={12} className="mr-1" />
+                      {formatPickupTimeForRole(offer.pickup_schedule!, false)}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Buyer being notified that seller didn't show up */}
+                {offers.filter(offer => offer.pickup_schedule?.seller_no_show && offer.buyer_id === user?.id).map(offer => (
+                  <div key={`seller-no-show-buyer-view-${offer.id}`} className="p-3 bg-white rounded-md border border-amber-200">
+                    <p className="font-medium">{offer.product?.title}</p>
+                    <p className="text-sm mt-1">The seller didn't show up for their scheduled drop-off. Your purchase has been canceled. Please contact the coordinator if you have any questions.</p>
+                    <div className="mt-2 text-xs flex items-center">
+                      <MapPin size={12} className="mr-1" />
+                      {offer.pickup_schedule?.location?.name || offer.pickup_schedule?.pickup_locations?.name || 'Unknown location'}
+                    </div>
+                    <div className="mt-1 text-xs flex items-center">
+                      <Clock size={12} className="mr-1" />
+                      {formatPickupTimeForRole(offer.pickup_schedule!, true)}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Seller being notified that buyer didn't show up */}
+                {offers.filter(offer => offer.pickup_schedule?.buyer_no_show && offer.seller_id === user?.id).map(offer => (
+                  <div key={`buyer-no-show-seller-view-${offer.id}`} className="p-3 bg-white rounded-md border border-amber-200">
+                    <p className="font-medium">{offer.product?.title}</p>
+                    <p className="text-sm mt-1">The buyer didn't show up for their scheduled pickup. The transaction has been canceled. Please contact the coordinator to arrange pickup of your item.</p>
+                    <div className="mt-2 text-xs flex items-center">
+                      <MapPin size={12} className="mr-1" />
+                      {offer.pickup_schedule?.location?.name || offer.pickup_schedule?.pickup_locations?.name || 'Unknown location'}
+                    </div>
+                    <div className="mt-1 text-xs flex items-center">
+                      <Clock size={12} className="mr-1" />
+                      {formatPickupTimeForRole(offer.pickup_schedule!, false)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Respond to Offer Dialog */}
+        <Dialog open={showRespondDialog} onOpenChange={setShowRespondDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Purchase Status</DialogTitle>
+              <DialogDescription>
+                Update the status for {selectedOffer?.product?.title}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <span className="text-sm text-muted-foreground">Your Price:</span>
+                  <p className="font-medium">₹{selectedOffer?.product?.price}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-muted-foreground">Offered Price:</span>
+                  <p className="font-semibold">₹{selectedOffer?.offered_price}</p>
+                </div>
+              </div>
+              
+              {selectedOffer?.buyer_message && (
+                <div className="mt-2 bg-muted p-3 rounded-md">
+                  <p className="text-sm text-muted-foreground">Buyer's message:</p>
+                  <p className="text-sm">{selectedOffer?.buyer_message}</p>
+                </div>
+              )}
+              
+              <div>
+                <label htmlFor="counterPrice" className="text-sm font-medium block mb-2">
+                  Counter Offer Price (Optional)
+                </label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="counterPrice"
+                    type="number"
+                    className="pl-10"
+                    value={counterPrice}
+                    onChange={(e) => setCounterPrice(parseFloat(e.target.value) || 0)}
+                    placeholder="Enter your counter offer"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Leave unchanged to accept the buyer's price
+                </p>
+              </div>
+              
+              <div>
+                <label htmlFor="responseMessage" className="text-sm font-medium block mb-2">
+                  Message (Optional)
+                </label>
+                <Textarea
+                  id="responseMessage"
+                  value={responseMessage}
+                  onChange={(e) => setResponseMessage(e.target.value)}
+                  placeholder="Add a message to the buyer..."
+                  rows={3}
+                />
+              </div>
+            </div>
+            
+            <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <Button 
+                variant="destructive" 
+                onClick={handleReject}
+                disabled={respondLoading}
+                className="flex-1"
+              >
+                <XCircle size={16} className="mr-2" /> Reject
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={handleCounter}
+                disabled={respondLoading || counterPrice <= 0}
+                className="flex-1"
+              >
+                <MessageSquare size={16} className="mr-2" /> Counter
+              </Button>
+              <Button 
+                variant="default" 
+                onClick={handleAccept}
+                disabled={respondLoading}
+                className="flex-1"
+              >
+                <CheckCircle2 size={16} className="mr-2" /> Accept
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
       <Footer />
     </AnimatedLayout>

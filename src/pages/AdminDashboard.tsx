@@ -301,14 +301,49 @@ const AdminDashboard = () => {
 
   const fetchOfferCoordinationCount = async () => {
     try {
-      const { count, error } = await supabase
+      // We need to get only the offers that need coordination:
+      // 1. Status is accepted AND
+      // 2. Either no pickup is scheduled OR
+      // 3. Pickup is scheduled but item is not delivered and not cancelled
+      
+      // First, get all accepted offers
+      const { data: offers, error: offersError } = await supabase
         .from('price_offers')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'accepted'); 
-        // Later: Could add logic to exclude completed/delivered pickups
-
-      if (error) throw error;
-      setOffersToCoordinateCount(count || 0);
+        .select('id')
+        .eq('status', 'accepted');
+      
+      if (offersError) throw offersError;
+      
+      if (!offers || offers.length === 0) {
+        setOffersToCoordinateCount(0);
+        return;
+      }
+      
+      // Get all pickup schedules for these offers
+      const offerIds = offers.map(offer => offer.id);
+      const { data: pickups, error: pickupsError } = await supabase
+        .from('pickup_schedules')
+        .select('offer_id, item_delivered, seller_no_show, buyer_no_show')
+        .in('offer_id', offerIds);
+      
+      if (pickupsError) throw pickupsError;
+      
+      // Count offers that need coordination (pending review)
+      const pendingOffers = offers.filter(offer => {
+        // Find pickup for this offer
+        const pickup = pickups?.find(p => p.offer_id === offer.id);
+        
+        // Include if:
+        // 1. No pickup scheduled yet, or
+        // 2. Pickup scheduled but not delivered and not cancelled
+        return !pickup || 
+          (pickup && 
+           !pickup.item_delivered && 
+           !pickup.seller_no_show && 
+           !pickup.buyer_no_show);
+      });
+      
+      setOffersToCoordinateCount(pendingOffers.length);
     } catch (error) {
       console.error('Error fetching offer coordination count:', error);
       // Don't show toast for count errors, maybe less critical
@@ -601,7 +636,7 @@ const AdminDashboard = () => {
             <CardContent>
               <div className="text-2xl font-bold">{offersToCoordinateCount}</div>
               <p className="text-xs text-muted-foreground">
-                Accepted offers needing pickup scheduling
+                Pending offers needing coordination
               </p>
             </CardContent>
           </Card>

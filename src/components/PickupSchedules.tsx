@@ -26,6 +26,8 @@ interface PickupSchedule {
   item_received: boolean;
   item_delivered: boolean;
   transaction_id: string | null;
+  seller_no_show?: boolean;
+  buyer_no_show?: boolean;
   offer: {
     product: {
       title: string;

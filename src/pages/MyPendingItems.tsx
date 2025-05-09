@@ -14,7 +14,8 @@ import {
   Plus,
   Trash2,
   ArrowLeft,
-  AlertCircle
+  AlertCircle,
+  MessageCircle
 } from 'lucide-react';
 import {
   Card,
@@ -43,19 +44,23 @@ const MyPendingItems = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [pendingItems, setPendingItems] = useState<any[]>([]);
+  const [noShowItems, setNoShowItems] = useState<any[]>([]);
+  const [buyerNoShowItems, setBuyerNoShowItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
-  const [noShowItems, setNoShowItems] = useState<any[]>([]);
+  const [notLoggedIn, setNotLoggedIn] = useState(false);
 
   useEffect(() => {
     if (!user) {
-      navigate('/auth');
+      setNotLoggedIn(true);
       return;
     }
-
+    
+    setNotLoggedIn(false);
     fetchPendingItems();
     fetchNoShowItems();
-  }, [user, navigate]);
+    fetchBuyerNoShowItems();
+  }, [user]);
 
   const fetchPendingItems = async () => {
     try {
@@ -129,6 +134,65 @@ const MyPendingItems = () => {
     }
   };
 
+  const fetchBuyerNoShowItems = async () => {
+    try {
+      // Get all offers where the current user is the buyer and the buyer_no_show is true
+      const { data: offerData, error: offerError } = await supabase
+        .from('price_offers')
+        .select(`
+          id, 
+          product_id, 
+          status, 
+          offered_price,
+          products (id, title, image),
+          pickup_schedules (id, pickup_location_id, pickup_time, buyer_no_show)
+        `)
+        .eq('buyer_id', user?.id);
+
+      if (offerError) throw offerError;
+
+      // Filter for offers with buyer_no_show = true
+      const noShowOffers = offerData?.filter(offer => 
+        offer.pickup_schedules && 
+        offer.pickup_schedules.length > 0 && 
+        offer.pickup_schedules[0].buyer_no_show
+      ) || [];
+      
+      // Fetch location info for these offers
+      if (noShowOffers && noShowOffers.length > 0) {
+        const locationIds = noShowOffers
+          .map(offer => offer.pickup_schedules?.[0]?.pickup_location_id)
+          .filter(Boolean);
+          
+        if (locationIds.length > 0) {
+          const { data: locationData } = await supabase
+            .from('pickup_locations')
+            .select('id, name')
+            .in('id', locationIds);
+            
+          // Combine the data
+          const enhancedData = noShowOffers.map(offer => {
+            const locationId = offer.pickup_schedules?.[0]?.pickup_location_id;
+            const location = locationData?.find(loc => loc.id === locationId);
+            
+            return {
+              ...offer,
+              location_name: location?.name || 'Unknown location'
+            };
+          });
+          
+          setBuyerNoShowItems(enhancedData);
+        } else {
+          setBuyerNoShowItems(noShowOffers);
+        }
+      } else {
+        setBuyerNoShowItems([]);
+      }
+    } catch (error: any) {
+      console.error('Error fetching buyer no-show items:', error);
+    }
+  };
+
   const handleDelete = async (itemId: string) => {
     try {
       const { error } = await supabase
@@ -171,6 +235,12 @@ const MyPendingItems = () => {
         return (
           <Badge variant="outline" className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 flex items-center gap-1">
             <AlertCircle size={12} /> No-Show
+          </Badge>
+        );
+      case 'buyer_no_show':
+        return (
+          <Badge variant="outline" className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 flex items-center gap-1">
+            <AlertCircle size={12} /> Missed Pickup
           </Badge>
         );
       default:
@@ -258,12 +328,12 @@ const MyPendingItems = () => {
                   </CardHeader>
                   <CardContent className="pb-2">
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-secondary/30 rounded-lg h-24 overflow-hidden">
+                      <div className="bg-secondary/30 rounded-lg overflow-hidden h-auto aspect-square">
                         {item.products.image && (
                           <img 
                             src={item.products.image} 
                             alt={item.products.title}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-contain p-2"
                           />
                         )}
                       </div>
@@ -278,6 +348,59 @@ const MyPendingItems = () => {
                     <p className="text-sm text-muted-foreground">
                       Please contact coordinator to arrange item pickup
                     </p>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {buyerNoShowItems.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-xl font-bold mb-4 flex items-center">
+              <AlertCircle size={20} className="mr-2 text-orange-500" /> 
+              Missed Pick-ups
+            </h2>
+            <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg mb-4">
+              <p className="text-orange-700 dark:text-orange-400">
+                You missed your scheduled pick-up time for the following items. Please contact the coordinator to arrange a new pick-up time.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {buyerNoShowItems.map((item) => (
+                <Card key={item.id} className="overflow-hidden">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">{item.products.title}</CardTitle>
+                    {getStatusBadge('buyer_no_show')}
+                  </CardHeader>
+                  <CardContent className="pb-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-secondary/30 rounded-lg overflow-hidden h-auto aspect-square">
+                        {item.products.image && (
+                          <img 
+                            src={item.products.image} 
+                            alt={item.products.title}
+                            className="w-full h-full object-contain p-2"
+                          />
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-sm"><strong>Price:</strong> ₹{item.offered_price}</p>
+                        <p className="text-sm"><strong>Pick-up Location:</strong> {item.location_name || 'Unknown location'}</p>
+                        <p className="text-sm"><strong>Status:</strong> Needs rescheduling</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => navigate(`/dashboard`)}
+                    >
+                      <MessageCircle size={16} className="mr-2" />
+                      Contact Coordinator
+                    </Button>
                   </CardFooter>
                 </Card>
               ))}
@@ -312,12 +435,12 @@ const MyPendingItems = () => {
             {pendingItems.map((item) => (
               <Card key={item.id} className="overflow-hidden">
                 <div className="flex flex-col md:flex-row">
-                  <div className="w-full md:w-1/4 min-h-[160px] bg-muted">
+                  <div className="w-full md:w-1/4 h-[200px] md:min-h-[160px] bg-secondary/30 rounded-lg overflow-hidden flex items-center justify-center">
                     {item.image ? (
                       <img
                         src={item.image}
                         alt={item.title}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain p-2"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-muted-foreground">

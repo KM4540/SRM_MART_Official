@@ -197,8 +197,34 @@ FOR EACH ROW
 WHEN (OLD.status <> 'completed' AND NEW.status = 'completed')
 EXECUTE FUNCTION create_transaction_for_completed_offer();
 
--- Update pickup and offer status function
-CREATE OR REPLACE FUNCTION update_pickup_and_offer_status()
+-- Create RPC function for updating pickup and creating transaction
+CREATE OR REPLACE FUNCTION update_pickup_and_offer_status(
+  _pickup_id UUID,
+  _transaction_id TEXT,
+  _offer_id UUID
+) RETURNS VOID AS $$
+BEGIN
+  -- Update the pickup schedule
+  UPDATE pickup_schedules
+  SET 
+    item_delivered = TRUE,
+    transaction_id = _transaction_id,
+    updated_at = NOW()
+  WHERE id = _pickup_id;
+  
+  -- Update the offer status to 'completed'
+  UPDATE price_offers
+  SET 
+    status = 'completed',
+    updated_at = NOW()
+  WHERE id = _offer_id;
+  
+  -- The transaction will be created by the create_transaction_for_completed_offer trigger
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create function to update offer status when pickup status changes
+CREATE OR REPLACE FUNCTION update_pickup_status_trigger()
 RETURNS TRIGGER AS $$
 BEGIN
     -- If item is received by admin
@@ -232,7 +258,7 @@ WHEN (
     (NEW.item_received = TRUE AND OLD.item_received = FALSE) OR
     (NEW.item_delivered = TRUE AND OLD.item_delivered = FALSE)
 )
-EXECUTE FUNCTION update_pickup_and_offer_status();
+EXECUTE FUNCTION update_pickup_status_trigger();
 
 -- =============================================================================
 -- SECTION 4: STORAGE SETUP
